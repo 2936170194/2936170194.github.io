@@ -994,3 +994,257 @@ private void unlock(String key) {
 Shop shop = cacheClient
                 .queryWithLogicalExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 10L, TimeUnit.SECONDS);
 ```
+## 3. 优惠卷秒杀
+
+### 3.1 Redis实现全局唯一ID
+- 在各类购物App中，都会遇到商家发放的优惠券
+- 当用户抢购商品时，生成的订单会保存到tb_voucher_order表中，而订单表如果使用数据库自增ID就会存在一些问题
+  - id规律性太明显
+  - 受单表数据量的限制
+- 如果我们的订单id有太明显的规律，那么对于用户或者竞争对手，就很容易猜测出我们的一些敏感信息，例如商城一天之内能卖出多少单，这明显不合适
+- 随着我们商城的规模越来越大，MySQL的单表容量不宜超过500W，数据量过大之后，我们就要进行拆库拆表，拆分表了之后，他们从逻辑上讲，是同一张表，所以他们的id不能重复，于是乎我们就要保证id的唯一性
+- 那么这就引出我们的全局ID生成器了
+  - 全局ID生成器是一种在分布式系统下用来生成全局唯一ID的工具，一般要满足一下特性
+    - 唯一性
+    - 高可用
+    - 高性能
+    - 递增性
+    - 安全性
+- 为了增加ID的安全性，我们可以不直接使用Redis自增的数值，而是拼接一些其他信息
+- ID组成部分
+  - 符号位：1bit，永远为0
+  - 时间戳：31bit，以秒为单位，可以使用69年（2^31秒约等于69年）
+  - 序列号：32bit，秒内的计数器，支持每秒传输2^32个不同ID
+  
+```java
+public static void main(String[] args) {
+    //设置一下起始时间，时间戳就是起始时间与当前时间的秒数差
+    LocalDateTime tmp = LocalDateTime.of(2026, 1, 1, 0, 0, 0);
+    System.out.println(tmp.toEpochSecond(ZoneOffset.UTC));
+    //结果为1767225600
+}
+```
+RedisIdWorker类的作用是生成全局唯一ID，它的实现原理是利用Redis的自增功能，每次生成ID时，先获取当前时间戳，然后将时间戳左移32位，再与序列号进行按位或操作，就可以得到一个全局唯一的ID。
+```java
+@Component
+public class RedisIdWorker {
+    /**
+     * 开始时间戳
+     */
+    private static final long BEGIN_TIMESTAMP = 1767225600;
+    /**
+     * 序列号位数
+     */
+    private static final int COUNT_BITS = 32;
+
+    private final StringRedisTemplate stringRedisTemplate;
+    public RedisIdWorker(StringRedisTemplate stringRedisTemplate) {
+        this.stringRedisTemplate = stringRedisTemplate;
+    }   
+
+    public long nextId(String keyPrefix) {
+        //1.生成时间戳
+        LocalDateTime now = LocalDateTime.now();
+        long second = now.toEpochSecond(ZoneOffset.UTC);
+        long timestamp = second - BEGIN_TIMESTAMP;
+        //2.生成序列号
+        //2.1获取当前日期，精确到天
+        String date = now.format(DateTimeFormatter.ofPattern("yyyy:MM:dd"));
+        //2.2自增长
+        Long count = stringRedisTemplate.opsForValue().increment("icr:" + keyPrefix + ":" + date);//如果不存在会自动创建一个key从0开始自增
+        //3.拼接并返回
+        return timestamp << COUNT_BITS | count;
+    }
+}
+```
+
+### 3.2 实现优惠卷秒杀下单
+![实现优惠卷秒杀下单](../../../public/blog/redis实战/16.jpg)
+```java
+@Override
+@Transactional
+public Result seckillVoucher(Long voucherId) {
+    //1. 查询优惠券
+    SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+    //2. 判断秒杀是否开始
+    LocalDateTime beginTime = voucher.getBeginTime();
+    if (beginTime.isAfter(LocalDateTime.now())) {
+        return Result.fail("秒杀尚未开始！");
+    }
+    //3. 判断秒杀是否结束
+    LocalDateTime endTime = voucher.getEndTime();
+    if (endTime.isBefore(LocalDateTime.now())) {
+        return Result.fail("秒杀已经结束！");
+    }
+    //4. 判断库存是否充足
+    Integer stock = voucher.getStock();
+    if (stock <= 0) {
+        return Result.fail("库存不足！");
+    }
+    //5. 扣减库存
+    boolean success = seckillVoucherService.update()
+            .setSql("stock = stock - 1")
+            .eq("voucher_id", voucherId)
+            .update();
+    if (!success) {
+        return Result.fail("库存不足！");
+    }
+    //6. 创建订单
+    VoucherOrder voucherOrder = new VoucherOrder();
+    //6.1. 订单id
+    long orderId = redisIdWorker.nextId("order");
+    voucherOrder.setId(orderId);
+    //6.2. 用户id
+    Long userId = UserHolder.getUser().getId();//从用户登录拦截器里获取用户id
+    voucherOrder.setUserId(userId);
+    //6.3. 代金劵id
+    voucherOrder.setVoucherId(voucherId);
+    //6.4. 保存订单
+    save(voucherOrder);
+    //7. 返回订单id
+    return Result.ok(orderId);
+}
+```
+
+### 3.3 超卖问题
+![超卖问题](../../../public/blog/redis实战/17.jpg)
+- 超卖问题的原因是在高并发场景下，多个线程同时判断库存充足，然后都去扣减库存，导致库存超卖
+- 超卖问题是典型的多线程安全问题，针对这一问题常见的方案就是加锁
+
+![加锁](../../../public/blog/redis实战/18.jpg)
+
+![乐观锁](../../../public/blog/redis实战/19.jpg)
+![乐观锁](../../../public/blog/redis实战/20.jpg)
+1.悲观锁：添加同步锁，让线程串行执行
+- 优点：简单粗暴
+- 缺点：性能一般
+
+2.乐观锁：不加锁，在更新时判断是否有其他线程在修改
+- 优点：性能好
+- 缺点：存在成功率低的问题
+- 在高并发场景下，不像库存一样的数据就需要判断数据是否改变来解决超卖问题，但是线程成功率超低，我们也可以采取分批，比如把100个库存分到10张表，分批加锁的方式
+下面我们采取乐观锁的方案来解决超卖问题：
+只需修改扣减库存的代码，将乐观锁的判断条件加上判断库存是否大于0即可。
+```java
+//5. 扣减库存
+boolean success = seckillVoucherService.update()
+        .setSql("stock = stock - 1")
+        .eq("voucher_id", voucherId)
+        //.eq("stock", voucher.getStock()) //乐观锁，判断库存是否改变(但是有库存时导致某些线程失败率过高)
+        .gt("stock", 0) //乐观锁，判断库存是否大于0
+        .update();
+```
+
+### 3.4 一人一单
+![一人一单](../../../public/blog/redis实战/21.jpg)
+- 由于是插入订单，不是更新订单，我们无法使用乐观锁去判断数据有没有被修改，使用需要用悲观锁。
+- 使用用户ID进行加锁，而不是对全部的线程都加锁
+- 因为我们是根据用户ID进行加锁的，所以不同用户之间是不会互相干扰的，而对全部的线程都加锁，会导致不同用户之间也会互相干扰，这是我们不希望看到的。
+- 代码中涉及到了`事务失效`、`动态代理`、`锁和事务的先后`问题(代码有注解)
+```java
+@Service
+public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
+
+    @Resource
+    private ISeckillVoucherService seckillVoucherService;
+
+    @Resource
+    private RedisIdWorker redisIdWorker;
+    @Override
+    public Result seckillVoucher(Long voucherId) {
+        //1. 查询优惠券
+        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+        //2. 判断秒杀是否开始
+        LocalDateTime beginTime = voucher.getBeginTime();
+        if (beginTime.isAfter(LocalDateTime.now())) {
+            return Result.fail("秒杀尚未开始！");
+        }
+        //3. 判断秒杀是否结束
+        LocalDateTime endTime = voucher.getEndTime();
+        if (endTime.isBefore(LocalDateTime.now())) {
+            return Result.fail("秒杀已经结束！");
+        }
+        //4. 判断库存是否充足
+        Integer stock = voucher.getStock();
+        if (stock <= 0) {
+            return Result.fail("库存不足！");
+        } 
+
+        Long userId = UserHolder.getUser().getId();//从用户登录拦截器中获取用户id
+        synchronized(userId.toString().intern()) { //每次传进来的userId都是不同的对象，所以这里使用字符串的值作为锁的对象，toString()也是返回的对象，使用我们需要使用intern()方法.intern()方法可以确保字符串常量池中只有一个相同内容的字符串对象
+            //需要等事务提交之后再释放锁，所以不能用在createVoucherOrder事务方法中
+            //return createVoucherOrder(voucherId);//这种是当前对象的方法调用，事务不生效
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();//获取当前对象(接口IVoucherOrderService)的代理对象
+            return proxy.createVoucherOrder(voucherId);//这种是代理对象的方法调用，事务生效
+        }
+    }
+
+    @Transactional //事务生效是因为spring对当前这个类做了动态代理，拿到了它的代理对象做的事务处理，事务在代理对象的方法中生效，而不是在当前对象的方法中生效
+    public Result createVoucherOrder(Long voucherId) {
+        //5.一人一单
+        Long userId = UserHolder.getUser().getId();//从用户登录拦截器中获取用户id
+        //5.1. 查询订单
+        int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        //5.2. 判断是否存在订单
+        if (count > 0) {
+            //用户已经购买过一次
+            return Result.fail("用户已经购买过一次！");
+        }
+        //6. 扣减库存
+        boolean success = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherId)
+                //.eq("stock", voucher.getStock()) //乐观锁，判断库存是否改变(但是有库存时导致某些线程失败率过高)
+                .gt("stock", 0) //乐观锁，判断库存是否大于0
+                .update();
+        if (!success) {
+            return Result.fail("库存不足！");
+        }
+        //7. 创建订单
+        VoucherOrder voucherOrder = new VoucherOrder();
+        //7.1. 订单id
+        long orderId = redisIdWorker.nextId("order");
+        voucherOrder.setId(orderId);
+        //7.2. 用户id
+        voucherOrder.setUserId(userId);
+        //7.3. 代金劵id
+        voucherOrder.setVoucherId(voucherId);
+        //7.4. 保存订单
+        save(voucherOrder);
+
+        //8. 返回订单id
+        return Result.ok(orderId);
+    }
+
+}
+```
+
+由于动态代理的对象是接口，所以我们需要用接口来接收代理对象，才能调用代理对象的方法，所以需要在接口中定义一个方法，用来创建订单。
+```java
+public interface IVoucherOrderService extends IService<VoucherOrder> {
+
+    Result seckillVoucher(Long voucherId);
+
+    Result createVoucherOrder(Long voucherId);
+
+}
+```
+
+在启动类中，我们需要用@EnableAspectJAutoProxy(exposeProxy = true)注解开启aspectj动态代理，暴露代理对象，我们才能获取到当前对象的代理对象。
+```java
+@EnableAspectJAutoProxy(exposeProxy = true)//开启aspectj动态代理，暴露代理对象
+```
+
+我们需要在pom.xml中添加aspectjweaver依赖，我们获取动态代理对象需要用到这个依赖。
+```java
+<!--动态代理的模式-->
+<dependency>
+    <groupId>org.aspectj</groupId>
+    <artifactId>aspectjweaver</artifactId>
+</dependency>
+```
+### 3.5 分布式锁
+
+### 3.6 Redis优化秒杀
+
+### 3.7 Redis消息队列实现异步秒杀
