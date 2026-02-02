@@ -1478,10 +1478,10 @@ public void unlock() {
 
 ## 5. 分布式锁Redisson
 基于SETNX实现的分布式锁存在以下问题:
-- 不可重入。重入问题是比如线程调用a方法，需要用到锁，而a方法中又调用了b方法，b方法也需要用到同一个锁，这就导致了重入问题。
-- 不可重试。获取锁只尝试一次就返回了false，没有重试机制。
-- 超时释放。如果在设置的超时时间内，线程还没有执行完，就会导致锁被误删。存在安全隐患。
-- 主从一致性。在Redis集群模式下，由于主从复制的异步特性，可能会导致锁在主节点上设置成功，但是在从节点上还没有同步，这就导致了主从一致性问题。此时如果主节点宕机，从节点升级为主节点，就会导致锁丢失，这就存在安全隐患。
+- `不可重入`。重入问题是比如线程调用a方法，需要用到锁，而a方法中又调用了b方法，b方法也需要用到同一个锁，这就导致了重入问题。
+- `不可重试`。获取锁只尝试一次就返回了false，没有重试机制。
+- `超时释放`。如果在设置的超时时间内，线程还没有执行完，就会导致锁被误删。存在安全隐患。
+- `主从一致性`。在Redis集群模式下，由于主从复制的异步特性，可能会导致锁在主节点上设置成功，但是在从节点上还没有同步，这就导致了主从一致性问题。此时如果主节点宕机，从节点升级为主节点，就会导致锁丢失，这就存在安全隐患。
 - 但是上述问题出现的概率很低，在一般场景已经够用了。
 - 我们接下来介绍Redisson，它是一个基于Redis的Java驻留内存数据网格（In-Memory Data Grid），它不仅提供了一系列的分布式的Java常用对象，还提供了许多分布式服务，其中就包含各种分布式锁的功能，我们遇到的各种问题都可以用Redisson来解决，不用我们自己手写模块了。
 - Redisson提供了分布式锁的多种多样功能
@@ -1553,13 +1553,149 @@ try {
     lock.unlock(); //释放锁
 }
 ```
+### 5.2 Redisson的可重入锁原理
+- 对于下面的例子需要使用到可重入锁：
+![Redisson获取锁](../../../public/blog/redis实战/33.jpg)
 
+- redisson可重入锁的原理：
+  - 获取锁
+![Redisson获取锁](../../../public/blog/redis实战/34.jpg)
+  - 释放锁
+![Redisson释放锁](../../../public/blog/redis实战/35.jpg)
 
+### 5.3 Redisson的重试机制和超时续约
+- 重试机制
+  - 当线程获取锁失败时，会利用信号量机制等待一个锁释放的信号，然后进行重试获取锁。
+  - 一直重试，直到超过等待时间，则结束重试。
+  - 通过等待、唤醒这样的机制不会占用过多的cpu，效率还不错。
+- 超时续约
+  - 当未设置超时时间时，会开启Watchdog机制。
+  - 线程获取锁成功后，会开启一个定时任务，每隔一段时间(releaseTime/3)，重置超时时间。
+  - 锁初始过期时间：30 秒
+  - 续约周期：每 10 秒一次（过期时间的 1/3）
+  - 是否自动续约：仅在未指定超时时间时开启
+  - Redisson 的 Watchdog 是运行在“加锁的那个 JVM 进程”里的一个定时任务，当进程挂了，Watchdog 也会挂掉不再续约，到期锁会自动释放。
+  - 永不过期->进程挂掉就无法释放锁。
+  - 过期时间固定->进程时间太久会导致安全隐患。
+  - Watchdog续约->很好。＜（＾－＾）＞
+![Redisson释放锁](../../../public/blog/redis实战/36.jpg)
 
+### 5.4 Redisson分布式锁主从一致性问题
+- 问题描述：
+  - 在Redis集群模式下，由于主从复制的异步特性，可能会导致锁在主节点上设置成功，但是在从节点上还没有同步，这就导致了主从一致性问题。
+  - 此时如果主节点宕机，从节点升级为主节点，就会导致锁丢失，这就存在安全隐患。
+![redis宕机](../../../public/blog/redis实战/37.jpg)
+![从节点替代主节点](../../../public/blog/redis实战/38.jpg)
 
+- 解决方法：
+  - 我们可以直接使用多个主节点，只有每个主节点同时获取到锁才能认为获取到了锁。
+  - 当然我们如果想要更好的效果，也可以进一步的给每个主节点加上从节点，从节点负责同步主节点的数据，当主节点宕机时，从节点可以升级为主节点，继续提供服务。
+![Redisson RedLock](../../../public/blog/redis实战/39.jpg)
+- 先配置多个redis作为主节点
+```java
+@Configuration
+public class RedissonConfig {
+    @Bean
+    public RedissonClient redissonClient() {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://192.168.137.130:6379")
+                .setPassword("root");
+        return Redisson.create(config);
+    }
 
+    @Bean
+    public RedissonClient redissonClient2() {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://92.168.137.131:6379")
+                .setPassword("root");
+        return Redisson.create(config);
+    }
 
+    @Bean
+    public RedissonClient redissonClient3() {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://92.168.137.132:6379")
+                .setPassword("root");
+        return Redisson.create(config);
+    }
+}
+```
+- 使用联锁（MultiLock）
+- 联锁（MultiLock）是Redisson提供的一种分布式锁实现，它可以将多个锁组合在一起，只有当所有锁都获取到了锁，才认为获取到了锁。
+- 创建锁对象需要传入多个锁对象，每个锁对象对应一个Redis节点。
+- 使用锁的方式与普通锁相同，只是在创建锁对象时需要传入多个锁对象。
+```java
+@Resource
+private RedissonClient redissonClient;
+@Resource
+private RedissonClient redissonClient2;
+@Resource
+private RedissonClient redissonClient3;
+
+private RLock lock;
+
+@BeforeEach
+void setUp() {
+    RLock lock1 = redissonClient.getLock("lock");
+    RLock lock2 = redissonClient2.getLock("lock");
+    RLock lock3 = redissonClient3.getLock("lock");
+    lock = redissonClient.getMultiLock(lock1, lock2, lock3);
+    //这里的getMultiLock()方法使用redissonClient、redissonClient2、redissonClient3调用都可。
+}
+
+@Test
+void method1() {
+    boolean success = lock.tryLock();
+    redissonClient.getMultiLock();
+    if (!success) {
+        log.error("获取锁失败，1");
+        return;
+    }
+    try {
+        log.info("获取锁成功");
+        method2();
+    } finally {
+        log.info("释放锁，1");
+        lock.unlock();
+    }
+}
+
+void method2() {
+    RLock lock = redissonClient.getLock("lock");
+    boolean success = lock.tryLock();
+    if (!success) {
+        log.error("获取锁失败，2");
+        return;
+    }
+    try {
+        log.info("获取锁成功，2");
+    } finally {
+        log.info("释放锁，2");
+        lock.unlock();
+    }
+}
+```
+### 5.5 小结
+- 不可重入Redis分布式锁
+  - 原理：利用SETNX的互斥性；利用EX避免死锁；释放锁时判断线程标识
+  - 缺陷：不可重入、无法重试、锁超时失效
+- 可重入Redis分布式锁
+  - 原理：利用Hash结构，记录线程标识与重入次数；利用WatchDog延续锁时间；利用信号量控制锁重试等待
+  - 缺陷：Redis宕机引起锁失效问题
+- Redisson的multiLock
+  - 原理：多个独立的Redis节点，必须在所有节点都获取重入锁，才算获取锁成功
+  - 缺陷：运维成本高、实现复杂
 
 ## 6. Redis优化秒杀
+- 我们先来看一下秒杀业务的原流程
+- 这个流程整个是串联操作，需要多次往数据库读写数据，比较耗时，而优惠卷秒杀业务是一种高并发场景，需要优化。
+![优惠卷秒杀业务原流程](../../../public/blog/redis实战/40.jpg)
+- 优化思路：
+- 将用户秒杀的资格认证和订单创建这两个步骤拆分成两个独立的操作。
+- 利用Redis的高效、高并发的特性使用lua脚本进行原子操作，对用户进行秒杀资格认证(库存和一人一单)，将(优惠卷id、用户id、订单id)保存到redis，返回订单id，供用户付款。之后可以异步慢慢处理订单创建操作。
+![优惠卷秒杀业务优化](../../../public/blog/redis实战/41.jpg)
+![优惠卷秒杀业务优化](../../../public/blog/redis实战/42.jpg)
+
+
 
 ## 7. Redis消息队列实现异步秒杀
