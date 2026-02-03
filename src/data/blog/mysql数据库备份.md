@@ -98,3 +98,4 @@ mysql -u root -p mydatabase
 gunzip
 ```
 基本上就这些。合理使用 mysqldump 配合脚本和计划任务，可以高效完成 MySQL 的日常备份工作。
+
