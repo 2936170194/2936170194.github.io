@@ -835,3 +835,404 @@ public class SystemConstants {
 ![17.jpg](../../../public/blog/SpringAI/17.jpg)
 ![18.jpg](../../../public/blog/SpringAI/18.jpg)
 ![19.jpg](../../../public/blog/SpringAI/19.jpg)
+### 4.1 编写Tools
+![20.jpg](../../../public/blog/SpringAI/20.jpg)
+![21.jpg](../../../public/blog/SpringAI/21.jpg)
+![22.jpg](../../../public/blog/SpringAI/22.jpg)
+- 1.我们先在配置文件中配置好数据库
+```yaml
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/itheima?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: root
+```
+
+- 2.我们需要先在数据库itheima中创建三个表
+```sql
+-- 导出  表 itheima.course 结构
+DROP TABLE IF EXISTS `course`;
+CREATE TABLE IF NOT EXISTS `course` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '学科名称',
+  `edu` int NOT NULL DEFAULT '0' COMMENT '学历背景要求：0-无，1-初中，2-高中、3-大专、4-本科以上',
+  `type` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '课程类型：编程、设计、自媒体、其它',
+  `price` bigint NOT NULL DEFAULT '0' COMMENT '课程价格',
+  `duration` int unsigned NOT NULL DEFAULT '0' COMMENT '学习时长，单位: 天',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='学科表';
+
+-- 正在导出表  itheima.course 的数据：~7 rows (大约)
+DELETE FROM `course`;
+INSERT INTO `course` (`id`, `name`, `edu`, `type`, `price`, `duration`) VALUES
+  (1, 'JavaEE', 4, '编程', 21999, 108),
+  (2, '鸿蒙应用开发', 3, '编程', 20999, 98),
+  (3, 'AI人工智能', 4, '编程', 24999, 100),
+  (4, 'Python大数据开发', 4, '编程', 23999, 102),
+  (5, '跨境电商', 0, '自媒体', 12999, 68),
+  (6, '新媒体运营', 0, '自媒体', 10999, 61),
+  (7, 'UI设计', 2, '设计', 11999, 66);
+
+-- 导出  表 itheima.course_reservation 结构
+DROP TABLE IF EXISTS `course_reservation`;
+CREATE TABLE IF NOT EXISTS `course_reservation` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `course` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '预约课程',
+  `student_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '学生姓名',
+  `contact_info` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '联系方式',
+  `school` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '预约校区',
+  `remark` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '备注',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 正在导出表  itheima.course_reservation 的数据：~0 rows (大约)
+DELETE FROM `course_reservation`;
+INSERT INTO `course_reservation` (`id`, `course`, `student_name`, `contact_info`, `school`, `remark`) VALUES
+  (1, '新媒体运营', '张三丰', '13899762348', '广东校区', '安排一个好点的老师');
+
+-- 导出  表 itheima.school 结构
+DROP TABLE IF EXISTS `school`;
+CREATE TABLE IF NOT EXISTS `school` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '校区名称',
+  `city` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '校区所在城市',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='校区表';
+
+-- 正在导出表  itheima.school 的数据：~0 rows (大约)
+DELETE FROM `school`;
+INSERT INTO `school` (`id`, `name`, `city`) VALUES
+  (1, '昌平校区', '北京'),
+  (2, '顺义校区', '北京'),
+  (3, '杭州校区', '杭州'),
+  (4, '上海校区', '上海'),
+  (5, '南京校区', '南京'),
+  (6, '西安校区', '西安'),
+  (7, '郑州校区', '郑州'),
+  (8, '广东校区', '广东'),
+  (9, '深圳校区', '深圳');
+```
+
+- 3.在com.itheima.ai.entity包下添加一个po包，向其中添加三张表对应的实体类：
+  - Course
+  - CourseReservation
+  - School
+  - 如：Course实体类
+```java
+package com.itheima.ai.entity.po;
+
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import java.io.Serializable;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
+
+@Data
+@EqualsAndHashCode(callSuper = false)
+@Accessors(chain = true)
+@TableName("course")
+public class Course implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * 主键
+     */
+    @TableId(value = "id", type = IdType.AUTO)
+    private Integer id;
+
+    /**
+     * 学科名称
+     */
+    private String name;
+
+    /**
+     * 学历背景要求：0-无，1-初中，2-高中、3-大专、4-本科以上
+     */
+    private Integer edu;
+
+    /**
+     * 类型: 编程、非编程
+     */
+    private String type;
+
+    /**
+     * 课程价格
+     */
+    private Long price;
+
+    /**
+     * 学习时长，单位: 天
+     */
+    private Integer duration;
+
+
+}
+```
+
+- 4.然后是Mapper接口，创建一个com.itheima.ai.mapper包，然后在其中写三个Mapper：
+  - CourseMapper
+  - CourseReservationMapper
+  - SchoolMapper
+  - 如：CourseMapper
+```java
+package com.itheima.ai.mapper;
+
+import com.itheima.ai.entity.po.Course;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+
+public interface CourseMapper extends BaseMapper<Course> {
+
+}
+```
+
+- 5.创建一个com.itheima.ai.service包，添加3个接口：
+  - ICourseService
+  - ICourseReservationService
+  - ISchoolService
+  - 如：ICourseService
+```java
+package com.itheima.ai.service;
+
+import com.itheima.ai.entity.po.Course;
+import com.baomidou.mybatisplus.extension.service.IService;
+
+public interface ICourseService extends IService<Course> {
+
+}
+```
+
+- 6.然后创建com.itheima.ai.service.impl包，写3个实现类：
+  - CourseServiceImpl
+  - CourseReservationServiceImpl
+  - SchoolServiceImpl
+  - 如：CourseServiceImpl
+```java
+package com.itheima.ai.service.impl;
+
+import com.itheima.ai.entity.po.Course;
+import com.itheima.ai.mapper.CourseMapper;
+import com.itheima.ai.service.ICourseService;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.springframework.stereotype.Service;
+
+/**
+ * 学科表 服务实现类
+ */
+@Service
+public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements ICourseService {
+
+}
+```
+- 7.我们需要定义一个类，封装这些可能的课程表查询条件。在com.itheima.ai.entity下新建一个query包，其中新建一个类(作为查询课程工具的参数)：
+  - CourseQuery
+```java
+package com.itheima.ai.entity.query;
+
+import lombok.Data;
+import org.springframework.ai.tool.annotation.ToolParam;
+
+import java.util.List;
+
+@Data
+public class CourseQuery {
+    @ToolParam(required = false, description = "课程类型：编程、设计、自媒体、其它")
+    private String type;
+    @ToolParam(required = false, description = "学历要求：0-无、1-初中、2-高中、3-大专、4-本科及本科以上")
+    private Integer edu;
+    @ToolParam(required = false, description = "排序方式")
+    private List<Sort> sorts;
+
+    @Data
+    public static class Sort {
+        @ToolParam(required = false, description = "排序字段: price或duration")
+        private String field;
+        @ToolParam(required = false, description = "是否是升序: true/false")
+        private Boolean asc;
+    }
+}
+```
+`注意：`
+`这里的@ToolParam注解是SpringAI提供的用来解释Function参数的注解。其中的信息都会通过提示词的方式发送给AI模型。`
+同样的道理，大家也可以给Function定义专门的VO，作为返回值给到大模型。这里我们就省略了。。
+
+
+- 8. 所谓的Function，就是一个个的函数，SpringAI提供了一个@Tool注解来标记这些特殊的函数。我们可以任意定义一个Spring的Bean，然后将其中的方法用@Tool标记即可：
+- 接下来，我们就来定义三个Function：
+  - 根据条件筛选和查询课程
+  - 查询校区列表
+  - 新增试听预约单
+  - 定义一个com.itheima.ai.tools包，在其中新建一个类：
+```java
+package com.itheima.ai.tools;
+
+import com.itheima.ai.entity.query.CourseQuery;
+import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
+import com.itheima.ai.entity.po.Course;
+import com.itheima.ai.entity.po.School;
+import com.itheima.ai.entity.po.CourseReservation;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.stereotype.Component;
+import java.util.List;
+import com.itheima.ai.service.ICourseService;
+import com.itheima.ai.service.ISchoolService;
+import com.itheima.ai.service.ICourseReservationService;
+import lombok.RequiredArgsConstructor;
+
+
+
+@RequiredArgsConstructor
+@Component
+public class CourseTools {
+
+    public final ICourseService courseService;
+    public final ISchoolService schoolService;
+    public final ICourseReservationService reservationService;
+
+    @Tool(description = "根据条件查询课程")
+    public List<Course> queryCourse(@ToolParam(description = "查询的条件" , required = false) CourseQuery query) {
+        if (query == null) {
+            return courseService.list();
+        }
+        QueryChainWrapper<Course> wrapper = courseService.query()
+        .eq(query.getType()!=null, "type", query.getType())//type='编程'
+        .le(query.getEdu()!=null, "edu", query.getEdu());//edu<=2
+        if(query.getSorts() != null) {
+            for (CourseQuery.Sort sort : query.getSorts()) {
+                wrapper.orderBy(true, sort.getAsc(), sort.getField());
+            }
+        }
+        return wrapper.list();
+    }
+
+    @Tool(description = "查询所有校区")
+    public List<School> querySchool() {
+        return schoolService.list();
+    }
+
+    @Tool(description = "生成预约单,返回预约单号")
+    public Integer CreateCourseReservation(
+        @ToolParam(description = "预约课程") String course,
+        @ToolParam(description = "预约校区") String school,
+        @ToolParam(description = "学生姓名") String studentName, 
+        @ToolParam(description = "联系电话") String contactInfo,  
+        @ToolParam(description = "备注" , required = false) String remark) {
+        CourseReservation reservation = new CourseReservation()
+                .setCourse(course)
+                .setSchool(school)
+                .setStudentName(studentName)
+                .setContactInfo(contactInfo)
+                .setRemark(remark);
+        reservationService.save(reservation);
+        return reservation.getId();
+
+    }
+}
+```
+### 4.2 智能客服FunctionCalling
+![22.jpg](../../../public/blog/SpringAI/22.jpg)
+我们的Tools已经实现了，接下来需要配置一下客户端，然后调用大模型。
+- 一、配置客户端
+```java
+    //开源小模型（Gemma/LLaMA/Mistral） + Ollama ≈ 基本都不支持原生 function calling
+    //深度思考模型基本上是不支持function calling的
+    @Bean 
+    public ChatClient serviceChatClient(OpenAiChatModel model, ChatMemory chatMemory, CourseTools courseTools) {
+        return ChatClient
+                .builder(model)
+                .defaultSystem(SystemConstants.SERVICE_SYSTEM_PROMPT)
+                .defaultAdvisors(
+                    new SimpleLoggerAdvisor(),
+                    MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .defaultTools(courseTools)
+                .build();
+    }
+```
+`注意：`
+`我尝试使用ollama本地的gemma3:4b模型时，发现不支持function calling。所以这里我使用的是兼容openai的阿里云百炼的qwen-plus-2025-07-28模型，它支持function calling。`
+`在使用function calling一定要查清楚模型是否支持function calling。`
+```xml
+<!-- 配置openai依赖-->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-openai</artifactId>
+		</dependency>
+```
+```yaml
+spring:
+  application:
+    name: heima-ai
+  ai:
+    ollama:
+        base-url: http://localhost:11434
+        chat: # 注释:选择chat类型的模型
+          model: gemma3:4b
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-XXX
+      chat:
+        options:
+          model: qwen-plus-2025-07-28
+          temperature: 0.8
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/itheima?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: root
+logging:
+    level:
+      "[org.springframework.ai]": debug # AI对话的日志级别
+      "[com.itheima.ai]": debug # 本项目的日志级别
+
+```
+- 二、调用大模型
+```java
+//新增了一个CustomServiceController类
+package com.itheima.ai.controller;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+
+import com.itheima.ai.repository.ChatHistoryRepository;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping("/ai")
+public class CustomServiceController {
+
+    private final ChatClient serviceChatClient;
+    private final ChatHistoryRepository chatHistoryRepository;
+
+    @RequestMapping(value = "/service", produces = "text/html;charset=utf-8")
+    public Flux<String> service(String prompt, String chatId) {
+        // 1. 保存会话id
+        chatHistoryRepository.save("service", chatId);
+        // 2. 请求模型
+        return serviceChatClient.prompt()
+                .user(prompt)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
+                .stream()
+                .content();
+    }
+
+}
+
+```
+`注意：`
+`1. 黑马的视频中由于阿里的模型和openai的兼容出现了问题（在调用Tools时，参数不全），实际上是在流式模式下，阿里返回的Tools需要的参数被分成了好几个部分，导致Tools调用失败。提示参数不全`
+解决方案：
+1.不采用流式，使用call()
+2.自己重写官方的代码（将参数拼接到一起）
+
+`2. 我自己使用时却没有出现问题，应该阿里云修复了这个问题，我调用了两个阿里云的模型都没有出现问题`
+
+- 三、进阶：由于很多模型不支持function calling，也可以自行尝试实现function calling。
+ 
