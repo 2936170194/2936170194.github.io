@@ -15,8 +15,10 @@ tags:
 可以观看下面的视频:
 
 1.[黑马程序员SpringAI+DeepSeek大模型应用开发实战视频教程，传统Java项目AI化转型必学课程](https://www.bilibili.com/video/BV1MtZnYtEB3?spm_id_from=333.788.videopod.episodes&vd_source=2ca9cbdfe2c1aa2031a5848bdce23d69)
-
-2.[官方笔记](https://my.feishu.cn/wiki/JBq3wsvR6iB5bqkrxqHcQlWynDh)
+`注: `
+`视频中使用的代码，是基于spring ai 1.0.0-M6版本的。`
+`我们自己使用的代码是基于spring ai 1.1.3版本的。有略微差别`
+2.[黑马笔记](https://my.feishu.cn/wiki/JBq3wsvR6iB5bqkrxqHcQlWynDh)
 
 3.[网盘资料](https://pan.baidu.com/s/1yXjqD9HY4Apc3AwQ0I6HEg&pwd=1234)
 
@@ -1236,3 +1238,581 @@ public class CustomServiceController {
 
 - 三、进阶：由于很多模型不支持function calling，也可以自行尝试实现function calling。
  
+## ChatPDF
+### 5.1 向量模型
+- 向量相似度
+
+![23.jpg](../../../public/blog/SpringAI/23.jpg)
+
+- 引入依赖
+
+![24.jpg](../../../public/blog/SpringAI/24.jpg)
+```xml
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-openai</artifactId>
+		</dependency>
+```
+
+- 配置向量模型
+
+![25.jpg](../../../public/blog/SpringAI/25.jpg)
+```yaml
+spring:
+  application:
+    name: heima-ai
+  ai:
+    ollama:
+        base-url: http://localhost:11434
+        chat: # 注释:选择chat类型的模型
+          model: gemma3:4b
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-XXX
+      chat:
+        options:
+          model: qwen-plus-2025-07-28
+          temperature: 0.8
+      embedding:
+        options:
+          model: text-embedding-v3
+          dimensions: 1024
+```
+
+- 使用EmbeddingModel
+
+![26.jpg](../../../public/blog/SpringAI/26.jpg)
+```java
+//测试向量相似度
+package com.itheima.ai;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import com.itheima.ai.util.VectorDistanceUtils;
+import java.util.List;
+
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+
+import java.util.Arrays;
+
+@SpringBootTest
+class HeimaAiApplicationTests {
+
+    @Autowired
+    private OpenAiEmbeddingModel embeddingModel;
+
+    @Test
+    void contextLoads() {
+        // 1.测试数据
+        // 1.1.用来查询的文本，国际冲突
+        String query = "global conflicts";
+        
+        // 1.2.用来做比较的文本
+        String[] texts = new String[]{
+                "哈马斯称加沙下阶段停火谈判仍在进行 以方尚未做出承诺",
+                "土耳其、芬兰、瑞典与北约代表将继续就瑞典“入约”问题进行谈判",
+                "日本航空基地水井中检测出有机氟化物超标",
+                "国家游泳中心（水立方）：恢复游泳、嬉水乐园等水上项目运营",
+                "我国首次在空间站开展舱外辐射生物学暴露实验",
+        };
+        // 2.向量化
+        // 2.1.先将查询文本向量化
+        float[] queryVector = embeddingModel.embed(query);
+
+        // 2.2.再将比较文本向量化，放到一个数组
+        List<float[]> textVectors = embeddingModel.embed(Arrays.asList(texts));
+        
+        // 3.比较欧氏距离
+        // 3.1.把查询文本自己与自己比较，肯定是相似度最高的
+        System.out.println(VectorDistanceUtils.euclideanDistance(queryVector, queryVector));
+        // 3.2.把查询文本与其它文本比较
+        for (float[] textVector : textVectors) {
+            System.out.println(VectorDistanceUtils.euclideanDistance(queryVector, textVector));
+        }
+        System.out.println("------------------");
+        
+        // 4.比较余弦距离
+        // 4.1.把查询文本自己与自己比较，肯定是相似度最高的
+        System.out.println(VectorDistanceUtils.cosineDistance(queryVector, queryVector));
+        // 4.2.把查询文本与其它文本比较
+        for (float[] textVector : textVectors) {
+            System.out.println(VectorDistanceUtils.cosineDistance(queryVector, textVector));
+        }
+    }
+
+}
+/*测试结果
+0.0
+1.0722205301828829
+1.0844350869313875
+1.1185223356097924
+1.1693257901084286
+1.1499045763089124
+------------------
+2.220446049250313E-16
+0.5748283836130118
+0.5879996713271627
+0.6255460276872555
+0.6836613679467995
+0.6611402672465168
+*/
+```
+```java
+//新增计算欧式距离和余弦距离的工具类
+package com.itheima.ai.util;
+
+public class VectorDistanceUtils {
+    
+    // 防止实例化
+    private VectorDistanceUtils() {}
+
+    // 浮点数计算精度阈值
+    private static final double EPSILON = 1e-12;
+
+    /**
+     * 计算欧氏距离
+     * @param vectorA 向量A（非空且与B等长）
+     * @param vectorB 向量B（非空且与A等长）
+     * @return 欧氏距离
+     * @throws IllegalArgumentException 参数不合法时抛出
+     */
+    public static double euclideanDistance(float[] vectorA, float[] vectorB) {
+        validateVectors(vectorA, vectorB);
+        
+        double sum = 0.0;
+        for (int i = 0; i < vectorA.length; i++) {
+            double diff = vectorA[i] - vectorB[i];
+            sum += diff * diff;
+        }
+        return Math.sqrt(sum);
+    }
+
+    /**
+     * 计算余弦距离
+     * @param vectorA 向量A（非空且与B等长）
+     * @param vectorB 向量B（非空且与A等长）
+     * @return 余弦距离，范围[0, 2]
+     * @throws IllegalArgumentException 参数不合法或零向量时抛出
+     */
+    public static double cosineDistance(float[] vectorA, float[] vectorB) {
+        validateVectors(vectorA, vectorB);
+        
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+        
+        for (int i = 0; i < vectorA.length; i++) {
+            dotProduct += vectorA[i] * vectorB[i];
+            normA += vectorA[i] * vectorA[i];
+            normB += vectorB[i] * vectorB[i];
+        }
+        
+        normA = Math.sqrt(normA);
+        normB = Math.sqrt(normB);
+        
+        // 处理零向量情况
+        if (normA < EPSILON || normB < EPSILON) {
+            throw new IllegalArgumentException("Vectors cannot be zero vectors");
+        }
+        
+        // 处理浮点误差，确保结果在[-1,1]范围内
+        double similarity =  dotProduct / (normA * normB);
+        similarity = Math.max(Math.min(similarity, 1.0), -1.0);
+        
+        return 1 - similarity;
+    }
+
+    // 参数校验统一方法
+    private static void validateVectors(float[] a, float[] b) {
+        if (a == null || b == null) {
+            throw new IllegalArgumentException("Vectors cannot be null");
+        }
+        if (a.length != b.length) {
+            throw new IllegalArgumentException("Vectors must have same dimension");
+        }
+        if (a.length == 0) {
+            throw new IllegalArgumentException("Vectors cannot be empty");
+        }
+    }
+}
+```
+### 5.2 向量数据库
+![27.jpg](../../../public/blog/SpringAI/27.jpg)
+![28.jpg](../../../public/blog/SpringAI/28.jpg)
+1.下面我们以redisStore为例，配置向量数据库（实战我们使用simplevectorstore）
+- 引入依赖
+
+![29.jpg](../../../public/blog/SpringAI/29.jpg)
+- 配置向量数据库
+
+![30.jpg](../../../public/blog/SpringAI/30.jpg)
+`使用simplevectorstore，依赖还是要引的，图片上写错了。但是不用安装和配置`
+`另，simplevectorstore的向量默认是保存在内存，程序结束就会丢失，我们可以使用save保存到本地，load从本地加载`
+```xml
+<!-- 引入向量数据库依赖 -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-advisors-vector-store</artifactId>
+		</dependency>
+```
+
+- 读写数据
+
+![31.jpg](../../../public/blog/SpringAI/31.jpg)
+
+`有关向量数据库，我们可以参考官方的技术文档，以官方文档为准:`https://docs.spring.io/spring-ai/reference/api/vectordbs.html#_vectorstore_implementations
+![32.jpg](../../../public/blog/SpringAI/32.jpg)
+2.我们在存入向量数据库前，还需要读取文档并拆分，转换成document格式再进行存储
+
+![33.jpg](../../../public/blog/SpringAI/33.jpg)
+![34.jpg](../../../public/blog/SpringAI/34.jpg)
+ETL(Extract, Transform, and Load) Pipeline这是spring ai提供的文件处理的模块了。
+`有关ETL Pipeline，我们可以参考官方的技术文档，以官方文档为准:`https://docs.spring.io/spring-ai/reference/api/etl-pipeline.html#_documentreaders
+
+### 5.3 读取PDF和向量搜索
+- 引入依赖
+```xml
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-pdf-document-reader</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-advisors-vector-store</artifactId>
+		</dependency>
+```
+```java
+//配置类中注册VectorStore
+    @Bean
+    public VectorStore vectorStore(OpenAiEmbeddingModel embeddingModel) {
+        return SimpleVectorStore.builder(embeddingModel).build();
+    }
+```
+```java
+//测试类编写测试方法
+    @Autowired
+    private VectorStore vectorStore;
+
+    @Test
+    public void testVectorStore(){
+       Resource resource = new FileSystemResource("中二知识笔记.pdf");
+       // 1.创建PDF的读取器
+       PagePdfDocumentReader reader = new PagePdfDocumentReader(
+             resource, // 文件源
+             PdfDocumentReaderConfig.builder()
+                   .withPageExtractedTextFormatter(ExtractedTextFormatter.defaults())
+                   .withPagesPerDocument(1) // 每1页PDF作为一个Document
+                   .build()
+       );
+       // 2.读取PDF文档，拆分为Document
+       List<Document> documents = reader.read();
+       // 3.写入向量库
+       vectorStore.add(documents);
+       // 4.搜索
+        SearchRequest request = SearchRequest.builder()
+             .query("论语中教育的目的是什么")//查询的文本
+             .topK(1)//返回 topK 个最相关的文档
+             .similarityThreshold(0.6)//相似度阈值，只有相似度大于阈值的文档才会被返回
+             .filterExpression("file_name == '中二知识笔记.pdf'")//过滤表达式，用于筛选出符合条件的文档，因为可能会有许多人上传很多文档
+             .build();
+       List<Document> docs = vectorStore.similaritySearch(request);
+       if (docs == null) {
+          System.out.println("没有搜索到任何内容");
+          return;
+       }
+       for (Document doc : docs) {
+          System.out.println(doc.getId());
+          System.out.println(doc.getScore());
+          System.out.println(doc.getText());
+       }
+    }
+```
+### 5.4 实现ChatPDF应用
+`注意：在测试load的功能时，一定要把idm关掉，否则会被idm拦截，┭┮﹏┭┮`
+- 1.基础的功能：pdf的保存与加载（还有向量保存、chatId-fileName映射保存...等等）
+
+![35.jpg](../../../public/blog/SpringAI/35.jpg)
+```java
+//上传pdf时的保存pdf以及向量化后保存到向量数据库
+//保存id和文件的映射关系
+//根据id加载pdf供用户预览
+package com.itheima.ai.service.impl;
+
+import com.itheima.ai.service.IFileService;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.reader.ExtractedTextFormatter;
+import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
+import org.springframework.ai.reader.pdf.config.PdfDocumentReaderConfig;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Service;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Properties;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class FileServiceImpl implements IFileService {
+
+    private final VectorStore vectorStore;
+
+    // 会话id 与 文件名的对应关系，方便查询会话历史时重新加载文件
+    private final Properties chatFiles = new Properties();
+
+    @Override
+    public boolean save(String chatId, Resource resource) {
+        // 1.保存到本地磁盘
+        String filename = resource.getFilename();
+        File target = new File(Objects.requireNonNull(filename));
+        if (!target.exists()) {
+            try {
+                Files.copy(resource.getInputStream(), target.toPath());
+            } catch (IOException e) {
+                log.error("Failed to save PDF resource.", e);
+                return false;
+            }
+        }
+        // 2.保存映射关系
+        chatFiles.put(chatId, filename);
+        // 3.写入向量库
+        writeToVectorStore(resource, chatId);
+        return true;
+    }
+
+    @Override
+    public Resource getFile(String chatId) {
+        return new FileSystemResource(chatFiles.getProperty(chatId));
+    }
+
+    @PostConstruct
+    private void init() {
+        FileSystemResource pdfResource = new FileSystemResource("chat-pdf.properties");
+        if (pdfResource.exists()) {
+            try {
+                chatFiles.load(new BufferedReader(new InputStreamReader(pdfResource.getInputStream(), StandardCharsets.UTF_8)));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        FileSystemResource vectorResource = new FileSystemResource("chat-pdf.json");
+        if (vectorResource.exists()) {
+            SimpleVectorStore simpleVectorStore = (SimpleVectorStore) vectorStore;
+            simpleVectorStore.load(vectorResource);
+        }
+    }
+
+    @PreDestroy
+    private void persistent() {
+        try {
+            chatFiles.store(new FileWriter("chat-pdf.properties"), LocalDateTime.now().toString());
+            if(vectorStore != null && vectorStore instanceof SimpleVectorStore simpleVectorStore) {
+                simpleVectorStore.save(new File("chat-pdf.json"));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void writeToVectorStore(Resource resource, String chatId) {
+        // 1.创建PDF的读取器
+        PagePdfDocumentReader reader = new PagePdfDocumentReader(
+                resource, // 文件源
+                PdfDocumentReaderConfig.builder()
+                        .withPageExtractedTextFormatter(ExtractedTextFormatter.defaults())
+                        .withPagesPerDocument(1) // 每1页PDF作为一个Document
+                        .build()
+        );
+        // 2.读取PDF文档，拆分为Document
+        List<Document> documents = reader.read();
+        documents.forEach(document -> document.getMetadata().put("chat_id", chatId));
+        // 3.写入向量库
+        vectorStore.add(documents);
+    }
+}
+```
+
+
+- 2.QuestionAnswerAdvisor的作用，自动检索向量，拼接上下文，回答问题
+
+![36.jpg](../../../public/blog/SpringAI/36.jpg)
+在配置pdfChatClient时，在defaultAdvisors中添加了QuestionAnswerAdvisor，用于根据上下文回答问题。
+
+
+- 3.配置pdfChatClient（主要是QuestionAnswerAdvisor的配置）
+
+![37.jpg](../../../public/blog/SpringAI/37.jpg)
+```java
+// 配置pdfChatClient
+    @Bean 
+    public ChatClient pdfChatClient(OpenAiChatModel model, ChatMemory chatMemory, VectorStore vectorStore) {
+        return ChatClient
+                .builder(model)
+                .defaultSystem("请根据上下文回答问题，遇到上下文没有的问题，不要随意编造。")
+                .defaultAdvisors(
+                    new SimpleLoggerAdvisor(),
+                    MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                    QuestionAnswerAdvisor
+                            .builder(vectorStore)
+                            .searchRequest(
+                                    SearchRequest.builder() // 向量检索的请求参数
+                                            .similarityThreshold(0.5d) // 相似度阈值
+                                            .topK(2) // 返回的文档片段数量
+                                            .build()
+                            ).build()
+                )
+                .build();
+    }
+```
+
+
+- 4.调用pdfChatClient（主要是新增`.advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "chat_id == '"+chatId+"'"))`给QuestionAnswerAdvisor添加过滤表达式）
+
+![38.jpg](../../../public/blog/SpringAI/38.jpg)
+```java
+package com.itheima.ai.controller;
+
+import com.itheima.ai.entity.vo.Result;
+import com.itheima.ai.repository.ChatHistoryRepository;
+import com.itheima.ai.service.IFileService;
+// import com.itheima.ai.service.ISpringAiChatRecordService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import reactor.core.publisher.Flux;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+
+@Slf4j
+@RequiredArgsConstructor
+@RestController
+@RequestMapping("/ai/pdf")
+public class PdfController {
+
+    private final IFileService fileService;
+
+    private final ChatClient pdfChatClient;
+
+    private final ChatHistoryRepository chatHistoryRepository;
+
+    @RequestMapping(value = "/chat", produces = "text/html;charset=UTF-8")
+    public Flux<String> chat(String prompt, String chatId) {
+        //保存会话id
+        chatHistoryRepository.save("pdf", chatId);
+        // 2. 调用AI模型
+        return pdfChatClient
+                .prompt(prompt)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
+                .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "chat_id == '"+chatId+"'"))//由于我们在保存向量到数据库时，将chat_id作为元数据也put进去了，所以这里可以根据chat_id过滤
+                .stream()
+                .content();
+    }
+
+    /**
+     * 文件上传
+     */
+    @RequestMapping("/upload/{chatId}")
+    public Result uploadPdf(@PathVariable String chatId, @RequestParam("file") MultipartFile file) {
+        try {
+            // 1. 校验文件是否为PDF格式
+            if (!Objects.equals(file.getContentType(), "application/pdf")) {
+                return Result.fail("只能上传PDF文件！");
+            }
+            // 2.保存文件
+            boolean success = fileService.save(chatId, file.getResource());
+            if(! success) {
+                return Result.fail("保存文件失败！");
+            }
+            return Result.ok();
+        } catch (Exception e) {
+            log.error("Failed to upload PDF.", e);
+            return Result.fail("上传文件失败！");
+        }
+    }
+
+    /**
+     * 文件下载
+     */
+    @GetMapping("/file/{chatId}")
+    public ResponseEntity<Resource> download(@PathVariable("chatId") String chatId) throws IOException {
+        // 1.读取文件
+        Resource resource = fileService.getFile(chatId);
+        if (!resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        // 2.文件名编码，写入响应头
+        String filename = URLEncoder.encode(Objects.requireNonNull(resource.getFilename()), StandardCharsets.UTF_8);
+        // 3.返回文件
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(resource);
+    }
+}
+```
+- 5. 暴露响应头
+默认情况下跨域请求的响应头是不暴露的，这样前端就拿不到下载的文件名，我们需要修改CORS配置，暴露响应头,新增.exposedHeaders("Content-Disposition");
+```java
+@Configuration
+public class MvcConfigration implements WebMvcConfigurer {
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")// 对所有接口路径生效
+                .allowedOrigins("*")// 允许任何域名的前端访问
+                .allowedMethods("*")// 允许 GET、POST、PUT、DELETE 等所有 HTTP 方法
+                .allowedHeaders("*")// 允许所有请求头
+                .exposedHeaders("Content-Disposition");
+                //默认情况下跨域请求的响应头是不暴露的，这样前端就拿不到下载的文件名，我们需要修改CORS配置，暴露响应头：
+    }
+}
+```
+- 6. 上传大小限制
+
+SpringMVC有默认的文件大小限制，只有10M，很多知识库文件都会超过这个值，所以我们需要修改配置，增加文件上传允许的上限。
+修改application.yaml文件，添加配置：
+```yaml
+spring:
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 40MB
+```
+### 5.5 RAG原理总结
+- RAG要做的事情就是将知识库分割，然后利用向量模型做向量化，存入向量数据库，然后查询的时候去检索
+  - 第一阶段（存储知识库）：
+    - 将知识库内容切片，分为一个个片段
+    - 将每个片段利用向量模型向量化
+    - 将所有向量化后的片段写入向量数据库  
+
+  - 第二阶段（检索知识库）：
+    - 每当用户询问AI时，将用户问题向量化
+    - 拿着问题向量去向量数据库检索最相关的片段
+
+  - 第三阶段（对话大模型）：
+    - 将检索到的片段、用户的问题一起拼接为提示词
+    - 发送提示词给大模型，得到响应
+
+![36.jpg](../../../public/blog/SpringAI/36.jpg)
