@@ -11,6 +11,31 @@ tags:
  - 大模型应用开发
 ---
 
+## spring ai实战精华总结
+### 1. SpringAI对话机器人
+- 配置模型，调用模型返回内容
+- 使用环绕增强器实现日志和会话记忆的功能
+.defaultAdvisors(new SimpleLoggerAdvisor(),MessageChatMemoryAdvisor.builder(chatMemory).build())
+### 2. 哄哄模拟器
+- 提示词工程，SpringAI对话机器人基础上调整提示词实现。
+### 3. 智能客服
+- 主要是实现function calling的Tools类
+- Tools类中使用注解
+  - @Tool(description = "根据条件查询课程")//注解方法
+  - @ToolParam(description = "查询的条件" , required = false)//注解参数
+  - 参数若是封装好的类，类里面的字段也要增加注解描述@ToolParam
+- 配置客户端使用.defaultTools(courseTools)将Tools类的实例传入配置中
+
+### 4. ChatPDF
+- 读取器读取文档，拆分为Document
+  - List<Document> documents = reader.read();
+- 向量数据库写入向量
+  - vectorStore.add(documents);
+- 配置客户端，使用客户端（详细配置和使用在5.4节）
+### 5. 多模态
+- SpringAI对话机器人基础上改用多模态大模型，在传提示词时，将文件一同传入
+  - .user(p -> p.text(prompt).media(medias.toArray(Media[]::new)))
+
 -----------
 可以观看下面的视频:
 
@@ -278,7 +303,7 @@ public class ChatController {
     //阻塞式返回对话结果
     @RequestMapping("/chat0")
     public String chatBlock(String prompt) {
-        return chatClient.prompt(prompt)
+        return chatClient.prompt()
                 .user(prompt)
                 .call()
                 .content();
@@ -287,7 +312,7 @@ public class ChatController {
     //流式返回对话结果
     @RequestMapping(value = "/chat1", produces = "text/html;charset=UTF-8")//需要用produces = "text/html;charset=UTF-8"将返回的流式数据转换为HTML格式、UTF-8编码，否则会乱码
     public Flux<String> chat(String prompt) {
-        return chatClient.prompt(prompt)
+        return chatClient.prompt()
                 .user(prompt)
                 .stream()
                 .content();
@@ -395,7 +420,7 @@ public ChatClient chatClient(OllamaChatModel model) {
 ```java
     @RequestMapping(value = "/chat", produces = "text/html;charset=UTF-8")
     public Flux<String> chat(String prompt, String chatId) {
-        return chatClient.prompt(prompt)
+        return chatClient.prompt()
                 .user(prompt)
                 .advisors(as -> as.param(ChatMemory.CONVERSATION_ID, chatId))//添加会话id，用于存储会话历史
                 .stream()
@@ -478,7 +503,7 @@ public class InMemoryChatHistoryRepository implements ChatHistoryRepository {
         //保存会话id
         chatHistoryRepository.save("chat", chatId);
         //请求模型
-        return chatClient.prompt(prompt)
+        return chatClient.prompt()
                 .user(prompt)
                 .advisors(as -> as.param(ChatMemory.CONVERSATION_ID, chatId))
                 .stream()
@@ -1816,3 +1841,95 @@ spring:
     - 发送提示词给大模型，得到响应
 
 ![36.jpg](../../../public/blog/SpringAI/36.jpg)
+
+## 多模态(修改对话机器人)
+![39.jpg](../../../public/blog/SpringAI/39.jpg)
+- 配置ChatClient
+```java
+    @Bean
+    public ChatClient chatClient(OpenAiChatModel model, ChatMemory chatMemory) {
+        return ChatClient
+                .builder(model)
+                .defaultOptions(ChatOptions.builder().model("qwen-omni-turbo").build())//不使用配置文件中配置的全局模型，自定义模型
+                //.defaultOptions还能自定义许多其他参数，比如温度。
+                .defaultSystem("你是一个人工智能助手，名字叫做小团团，请用小团团的身份和语气回答用户的问题。")
+                .defaultAdvisors(
+                    new SimpleLoggerAdvisor(),
+                    MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .build();
+    }
+```
+- 使用ChatClient
+```java
+package com.itheima.ai.controller;
+
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.content.Media;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.itheima.ai.repository.ChatHistoryRepository;
+
+import lombok.RequiredArgsConstructor;
+import reactor.core.publisher.Flux;
+
+@RequiredArgsConstructor//是 Lombok 提供的注解，它会 自动生成包含所有 final 字段的构造函数 。
+@RestController
+@RequestMapping("/ai")
+public class ChatController {
+
+    private final ChatClient chatClient;
+    private final ChatHistoryRepository chatHistoryRepository;
+
+    @RequestMapping(value = "/chat", produces = "text/html;charset=UTF-8")
+    public Flux<String> chat(
+            @RequestParam("prompt") String prompt, 
+            @RequestParam("chatId") String chatId,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files) {
+        //保存会话id
+        chatHistoryRepository.save("chat", chatId);
+        //请求模型
+        if(null == files || files.isEmpty()){
+            return textChat(prompt,chatId);
+        }else{
+            return multiModalChat(prompt,chatId,files);
+        }
+        
+    }
+
+    private Flux<String> multiModalChat(String prompt, String chatId, List<MultipartFile> files) {
+        //1.解析多媒体
+        List<Media> medias = files.stream()
+                .map(file -> new Media(
+                        MediaType.valueOf(Objects.requireNonNull(file.getContentType())),
+                        file.getResource()
+                ))
+                .toList();
+
+        return chatClient.prompt()
+                .user(p -> p.text(prompt).media(medias.toArray(Media[]::new)))//把文件转成数组再传参
+                .advisors(as -> as.param(ChatMemory.CONVERSATION_ID, chatId))
+                .stream()
+                .content();
+    }
+
+    private Flux<String> textChat(String prompt, String chatId) {
+        return chatClient.prompt()
+                .user(prompt)
+                .advisors(as -> as.param(ChatMemory.CONVERSATION_ID, chatId))
+                .stream()
+                .content();
+    }
+
+}
+
+```
+`注：传音频文件会出错，因为阿里百炼的音频格式data:;base64,{base64_audio}要求和openai的音频格式base64_audio要求不兼容`
