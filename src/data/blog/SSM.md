@@ -1,5 +1,5 @@
 ---
-title: spring ai实战
+title: SSM
 author: 李杰
 pubDatetime: 2026-06-30T00:00:00Z
 featured: false
