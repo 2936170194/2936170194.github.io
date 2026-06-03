@@ -4,7 +4,7 @@ author: 李杰
 pubDatetime: 2026-06-30T00:00:00Z
 featured: false
 draft: false
-description: spring ai实战笔记
+description: SSM学习
 tags: 
  - 后端
  - SSM
