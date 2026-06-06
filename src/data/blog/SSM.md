@@ -19,7 +19,8 @@ tags:
 
 ## 首部记忆导图（Mermaid）
 
-![001.svg](../../../public/blog/SSM/spring_day01/assets/001.svg)
+
+![001.svg](../../../public/blog/SSM/001.svg)
 
 ## 核心正文笔记
 
@@ -841,27 +842,4 @@ public void transfer(String out, String in, Double money) {
 
 ## 尾部复盘导图（Mermaid）
 
-```mermaid
-flowchart LR
-    accTitle: SSM Quick Recall Map
-    accDescr: This compact recall map keeps only the hardest review cues: container, injection, integration, aspect, around advice, transaction rollback, and propagation.
-
-    q1["为什么学 Spring?"] --> q2["解耦<br/>IoC 管创建<br/>DI 管关系"]
-    q2 --> q3["怎么配置?"]
-    q3 --> x1["XML<br/>bean + property"]
-    q3 --> x2["注解<br/>@ComponentScan<br/>@Autowired<br/>@Bean"]
-    x2 --> q4["整合 MyBatis<br/>DataSource<br/>SqlSessionFactoryBean<br/>MapperScannerConfigurer"]
-    q4 --> q5["AOP 增强<br/>Pointcut 找方法<br/>Advice 放功能<br/>Aspect 绑定"]
-    q5 --> q6["@Around 必背<br/>ProceedingJoinPoint<br/>proceed(args)<br/>return ret"]
-    q6 --> q7["事务<br/>@Transactional<br/>事务管理器<br/>EnableTransactionManagement"]
-    q7 --> q8["默认回滚<br/>RuntimeException/Error<br/>检查异常 rollbackFor"]
-    q8 --> q9["传播行为<br/>REQUIRED 默认加入<br/>REQUIRES_NEW 独立事务"]
-
-    classDef key fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a5f
-    classDef danger fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
-    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
-
-    class q2,q3,q5,q6,q7 key
-    class q8,q9 danger
-    class q4 app
-```
+![002.svg](../../../public/blog/SSM/002.svg)
