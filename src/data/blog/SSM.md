@@ -19,69 +19,7 @@ tags:
 
 ## 首部记忆导图（Mermaid）
 
-```mermaid
-flowchart TD
-    accTitle: Spring SSM Memory Map
-    accDescr: This memory map organizes Spring learning by problem, solution, configuration style, integration, AOP enhancement, and transaction guarantees.
-
-    start["Spring Framework<br/>目标: 简化开发 + 整合框架"]
-    pain["原始代码痛点<br/>Service 主动 new Dao<br/>实现一变, 调用方也变"]
-    ioc["IoC 控制反转<br/>对象创建权交给容器"]
-    bean["Bean<br/>被 Spring 创建和管理的对象"]
-    di["DI 依赖注入<br/>在容器内绑定对象关系"]
-    result["结果<br/>从容器取对象时<br/>依赖已经装配好"]
-
-    start --> pain --> ioc --> bean --> di --> result
-
-    xml["XML 路线<br/>bean/property/constructor-arg"]
-    anno["注解路线<br/>@Component/@Autowired/@Bean"]
-    third["第三方 Bean<br/>DataSource 等无法改源码<br/>用 @Bean 或 XML 管理"]
-    mybatis["整合 MyBatis<br/>SqlSessionFactoryBean<br/>MapperScannerConfigurer"]
-    junit["整合 JUnit<br/>@RunWith + @ContextConfiguration"]
-
-    ioc --> xml
-    ioc --> anno
-    anno --> third --> mybatis --> junit
-
-    aop["AOP 面向切面<br/>不改原代码做增强"]
-    pointcut["切入点 Pointcut<br/>哪些方法要增强"]
-    advice["通知 Advice<br/>增强什么功能"]
-    aspect["切面 Aspect<br/>通知 + 切入点的对应关系"]
-    proxy["代理 Proxy<br/>容器中拿到的可能是代理对象"]
-
-    start --> aop --> pointcut
-    aop --> advice
-    pointcut --> aspect
-    advice --> aspect --> proxy
-
-    tx["声明式事务<br/>AOP 的典型应用"]
-    manager["事务管理员<br/>业务层 @Transactional 发起事务"]
-    coordinator["事务协调员<br/>Dao 或其他业务方法加入事务"]
-    rollback["回滚规则<br/>默认 RuntimeException/Error 回滚<br/>检查异常需 rollbackFor"]
-    propagation["传播行为<br/>默认 REQUIRED<br/>日志独立保存用 REQUIRES_NEW"]
-
-    aop --> tx --> manager --> coordinator
-    tx --> rollback
-    tx --> propagation
-
-    contrast1["易混对比<br/>IoC 管对象<br/>AOP 管增强<br/>事务管一致性"]
-    contrast2["易混对比<br/>@Autowired 先按类型<br/>多个时再看名称<br/>仍不明确用 @Qualifier"]
-    contrast3["易混对比<br/>@After 总会尝试执行<br/>@AfterReturning 只在正常返回后<br/>@AfterThrowing 只在异常后"]
-
-    result --> contrast1
-    anno --> contrast2
-    advice --> contrast3
-
-    classDef core fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a5f
-    classDef warn fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#713f12
-    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
-    classDef aop fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#3b0764
-
-    class start,ioc,bean,di,result core
-    class contrast1,contrast2,contrast3,rollback,propagation warn
-    class third,mybatis,junit,tx app
-    class aop,pointcut,advice,aspect,proxy aop
-```
+![001.svg](../../../public/blog/SSM/spring_day01/assets/001.svg)
 
 ## 核心正文笔记
 
