@@ -19,7 +19,7 @@ tags:
 
 ## 首部记忆导图（Mermaid）
 
-![003.svg](../../../public/blog/SSM/003.svg)
+![start.svg](../../../public/blog/SSM/start.svg)
 ## 核心正文笔记
 
 这三天的主线可以压成一句话：**Spring 用 IoC/DI 管对象和依赖，用 AOP 管横切增强，用声明式事务保证业务一致性，再通过 IoC 把 MyBatis、数据源、JUnit 等技术整合进同一个容器。**复习时不要先背注解清单，先问每个技术点解决什么问题，再记住它的配置入口。
@@ -33,6 +33,10 @@ tags:
 - **后续预留：MyBatisPlus 与项目整合**，后面继续追加时直接接在 SpringMVC 之后即可。
 
 ### 1. Spring 学习主线
+
+#### Spring 首部记忆导图
+
+![spring-s.svg](../../../public/blog/SSM/spring-s.svg)
 
 Spring 这里主要指 **Spring Framework**。它是 SpringBoot、SpringCloud 等生态项目的底层基础。课程中的四块重点是：
 
@@ -846,7 +850,16 @@ public void transfer(String out, String in, Double money) {
 
 > **重难点：**`REQUIRES_NEW` 会开启一个新事务，并与当前事务隔离。转账事务回滚，不影响日志事务提交。这是“主业务失败但审计日志保留”的典型场景。
 
+#### Spring 尾部复盘导图
+
+![spring-e.svg](../../../public/blog/SSM/spring-e.svg)
+
 ### 7. SpringMVC 学习主线
+
+#### SpringMVC 首部记忆导图（Mermaid）
+
+![springmvc-s.svg](../../../public/blog/SSM/springmvc-s.svg)
+
 
 SpringMVC 是 Spring Framework 体系里的 **Web 表现层框架**，本质上是对 Servlet 开发的封装。复习它不要从注解开始背，而要先记住一条请求链：
 
@@ -2024,6 +2037,11 @@ afterCompletion 1
 
 > **重难点：**`preHandle` 按配置顺序执行；`postHandle` 和 `afterCompletion` 按反向顺序执行。某个拦截器拦截后，后续 Controller 和后续拦截器不再执行，但已经放行过的前置拦截器可能会执行 `afterCompletion`。
 
+#### SpringMVC 尾部复盘导图（Mermaid）
+
+![springmvc-e.svg](../../../public/blog/SSM/springmvc-e.svg)
+
+
 ## 尾部复盘导图（Mermaid）
 
-![004.svg](../../../public/blog/SSM/004.svg)
+![end.svg](../../../public/blog/SSM/end.svg)
