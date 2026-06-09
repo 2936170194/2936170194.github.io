@@ -19,12 +19,18 @@ tags:
 
 ## 首部记忆导图（Mermaid）
 
-
-![001.svg](../../../public/blog/SSM/001.svg)
-
+![003.svg](../../../public/blog/SSM/003.svg)
 ## 核心正文笔记
 
 这三天的主线可以压成一句话：**Spring 用 IoC/DI 管对象和依赖，用 AOP 管横切增强，用声明式事务保证业务一致性，再通过 IoC 把 MyBatis、数据源、JUnit 等技术整合进同一个容器。**复习时不要先背注解清单，先问每个技术点解决什么问题，再记住它的配置入口。
+
+### 文档结构
+
+这份 SSM 笔记按“先容器、再 Web、再持久层增强、最后项目化”的顺序组织：
+
+- **第一部分：Spring Framework**，对应下面第 1 到第 6 节，重点是 IoC/DI、AOP、事务和 Spring 整合 MyBatis。
+- **第二部分：SpringMVC**，对应下面第 7 节开始，重点是请求入口、参数绑定、JSON 响应、REST、SSM 整合、统一结果、统一异常和拦截器。
+- **后续预留：MyBatisPlus 与项目整合**，后面继续追加时直接接在 SpringMVC 之后即可。
 
 ### 1. Spring 学习主线
 
@@ -840,6 +846,1184 @@ public void transfer(String out, String in, Double money) {
 
 > **重难点：**`REQUIRES_NEW` 会开启一个新事务，并与当前事务隔离。转账事务回滚，不影响日志事务提交。这是“主业务失败但审计日志保留”的典型场景。
 
+### 7. SpringMVC 学习主线
+
+SpringMVC 是 Spring Framework 体系里的 **Web 表现层框架**，本质上是对 Servlet 开发的封装。复习它不要从注解开始背，而要先记住一条请求链：
+
+> **浏览器发送请求 -> Tomcat 接收 -> DispatcherServlet 统一分发 -> Controller 方法处理 -> 参数绑定/业务调用 -> 消息转换器把结果写回响应体。**
+
+传统 Servlet 开发的问题是：每个 Servlet 往往对应一类请求，路径映射、参数获取、响应输出都要自己写，Web 层代码容易又散又重复。SpringMVC 把这些重复工作抽出来，让开发者主要关注 `Controller` 方法。
+
+| 学习块 | 解决的问题 | 关键记忆点 |
+| --- | --- | --- |
+| 入门配置 | SpringMVC 如何接管 Web 请求 | `DispatcherServlet` 是统一入口 |
+| Bean 加载控制 | Spring 和 SpringMVC 谁管哪些 Bean | MVC 容器管 Controller，Spring 容器管 Service/Dao/事务 |
+| 请求参数 | 前端数据如何进入 Java 方法 | 普通参数、POJO、数组、集合、JSON、路径变量 |
+| 响应结果 | Java 返回值如何变成响应内容 | `@ResponseBody` + Jackson + `@EnableWebMvc` |
+| REST 风格 | 用统一 URL 表示资源操作 | 资源名用名词，动作交给 HTTP 方法 |
+| SSM 整合 | SpringMVC + Spring + MyBatis 协同 | Web 入口加载两个容器配置 |
+| 统一结果/异常 | 前后端通信协议稳定 | `Result`、`Code`、`@RestControllerAdvice` |
+| 拦截器 | Controller 前后做统一增强 | `preHandle` 控制是否放行 |
+
+> **重难点：**SpringMVC 和 Spring 不是两套互不相干的框架。SpringMVC 负责“请求进来怎么找 Controller、数据怎么收发”；Spring 负责“业务对象、数据源、Mapper、事务怎么管理”。SSM 整合时，二者通过父子容器协作。
+
+### 8. SpringMVC 入门：让 DispatcherServlet 接管请求
+
+SpringMVC 入门案例可以按 Servlet 的替代路线记：以前写 `Servlet + web.xml`，现在写 `Controller + SpringMVC 配置类 + Web 容器初始化类`。
+
+Maven Web 工程的关键依赖：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>javax.servlet</groupId>
+        <artifactId>javax.servlet-api</artifactId>
+        <version>3.1.0</version>
+        <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-webmvc</artifactId>
+        <version>5.2.10.RELEASE</version>
+    </dependency>
+</dependencies>
+```
+
+> **易错：**`servlet-api` 必须用 `provided`。Tomcat 运行时已经提供 Servlet API，如果项目再把它打进运行环境，容易和 Tomcat 自带 jar 冲突。
+
+SpringMVC 配置类只扫描表现层：
+
+```java
+@Configuration
+@ComponentScan("com.itheima.controller")
+public class SpringMvcConfig {
+}
+```
+
+控制器方法：
+
+```java
+@Controller
+public class UserController {
+    @RequestMapping("/save")
+    @ResponseBody
+    public String save() {
+        System.out.println("user save ...");
+        return "{'info':'springmvc'}";
+    }
+}
+```
+
+Web 容器初始化类用于替代 `web.xml`：
+
+```java
+public class ServletContainersInitConfig extends AbstractDispatcherServletInitializer {
+    @Override
+    protected WebApplicationContext createServletApplicationContext() {
+        AnnotationConfigWebApplicationContext ctx =
+                new AnnotationConfigWebApplicationContext();
+        ctx.register(SpringMvcConfig.class);
+        return ctx;
+    }
+
+    @Override
+    protected String[] getServletMappings() {
+        return new String[]{"/"};
+    }
+
+    @Override
+    protected WebApplicationContext createRootApplicationContext() {
+        return null;
+    }
+}
+```
+
+这段配置的含义要拆开记：
+
+- `createServletApplicationContext()`：创建 SpringMVC 容器，加载 Controller 等表现层 Bean。
+- `getServletMappings()`：设置 SpringMVC 拦截哪些请求，`/` 表示除 JSP 外几乎都交给 SpringMVC。
+- `createRootApplicationContext()`：创建 Spring 根容器，SSM 整合时用来加载 Spring、Service、Dao、事务等配置。
+
+> **易错：**Controller 方法如果直接返回 `String`，默认会被当作“视图名称”解析。想把字符串本身写回浏览器，必须加 `@ResponseBody`，或者在类上用 `@RestController`。
+
+SpringMVC 单次请求流程：
+
+1. 浏览器请求 `/save`。
+2. Tomcat 根据 Servlet 映射规则，把请求交给 SpringMVC 的 `DispatcherServlet`。
+3. SpringMVC 查找 `/save` 对应的 Controller 方法。
+4. 执行 `save()`。
+5. 发现 `@ResponseBody`，不走页面解析，直接把返回值写入响应体。
+
+### 9. Spring 与 SpringMVC 的 Bean 加载边界
+
+SSM 项目里通常同时存在 `SpringConfig` 和 `SpringMvcConfig`。这不是重复配置，而是职责分离：
+
+| 容器 | 应加载的 Bean | 不建议加载的 Bean |
+| --- | --- | --- |
+| SpringMVC 容器 | `Controller`、MVC 配置、拦截器、静态资源映射 | Service、Dao、DataSource、事务 |
+| Spring 根容器 | `Service`、Dao/Mapper、DataSource、MyBatis、事务管理器 | Controller |
+
+推荐写法是精准扫描：
+
+```java
+@Configuration
+@ComponentScan("com.itheima.controller")
+@EnableWebMvc
+public class SpringMvcConfig {
+}
+```
+
+```java
+@Configuration
+@ComponentScan("com.itheima.service")
+@PropertySource("classpath:jdbc.properties")
+@Import({JdbcConfig.class, MyBatisConfig.class})
+@EnableTransactionManagement
+public class SpringConfig {
+}
+```
+
+如果 Spring 根容器扫描范围写成 `com.itheima`，就可能把 `Controller` 也扫进去。可用排除过滤：
+
+```java
+@Configuration
+@ComponentScan(
+    value = "com.itheima",
+    excludeFilters = @ComponentScan.Filter(
+        type = FilterType.ANNOTATION,
+        classes = Controller.class
+    )
+)
+public class SpringConfig {
+}
+```
+
+> **重难点：**Controller 最好只在 SpringMVC 容器中。表现层 Bean 被 Spring 根容器提前扫描进去，轻则结构混乱，重则 MVC 特性、拦截器、异常处理等协作关系不清晰。
+
+### 10. 请求映射与参数绑定
+
+`@RequestMapping` 可以写在类上和方法上。类上路径负责抽公共前缀，方法上路径负责具体动作：
+
+```java
+@Controller
+@RequestMapping("/user")
+public class UserController {
+    @RequestMapping("/save")
+    @ResponseBody
+    public String save() {
+        return "{'module':'user save'}";
+    }
+}
+```
+
+最终访问路径是 `/user/save`。
+
+#### 普通参数
+
+请求地址：
+
+```text
+GET /commonParam?name=itheima&age=15
+```
+
+后端接收：
+
+```java
+@RequestMapping("/commonParam")
+@ResponseBody
+public String commonParam(String name, int age) {
+    System.out.println("name = " + name + ", age = " + age);
+    return "{'module':'common param'}";
+}
+```
+
+如果请求参数名和方法形参名不一致，用 `@RequestParam` 指定：
+
+```java
+@RequestMapping("/commonParamDifferentName")
+@ResponseBody
+public String commonParamDifferentName(@RequestParam("name") String userName, int age) {
+    System.out.println("userName = " + userName + ", age = " + age);
+    return "{'module':'common param different name'}";
+}
+```
+
+> **易错：**`@RequestParam` 用于 URL 参数或表单参数，不用于接收 JSON 请求体。JSON 请求体要用 `@RequestBody`。
+
+#### POJO 与嵌套 POJO
+
+只要请求参数名和对象属性名一致，SpringMVC 会自动封装：
+
+```java
+public class User {
+    private String name;
+    private Integer age;
+    private Address address;
+    // getter/setter
+}
+```
+
+请求地址：
+
+```text
+GET /pojoParam?name=itheima&age=15&address.province=beijing&address.city=beijing
+```
+
+Controller：
+
+```java
+@RequestMapping("/pojoParam")
+@ResponseBody
+public String pojoParam(User user) {
+    System.out.println(user);
+    return "{'module':'pojo param'}";
+}
+```
+
+#### 数组与集合
+
+数组适合接收同名多值参数：
+
+```text
+GET /arrayParam?likes=game&likes=music&likes=travel
+```
+
+```java
+@RequestMapping("/arrayParam")
+@ResponseBody
+public String arrayParam(String[] likes) {
+    System.out.println(Arrays.toString(likes));
+    return "{'module':'array param'}";
+}
+```
+
+集合接收同名参数时需要 `@RequestParam`：
+
+```java
+@RequestMapping("/listParam")
+@ResponseBody
+public String listParam(@RequestParam List<String> likes) {
+    System.out.println(likes);
+    return "{'module':'list param'}";
+}
+```
+
+> **易错：**普通集合参数如果不加 `@RequestParam`，SpringMVC 容易按复杂对象处理，导致绑定失败。简单集合接收 URL/form 参数时记得加。
+
+#### JSON 参数
+
+接收 JSON 需要三件事：
+
+1. 导入 Jackson 依赖。
+2. SpringMVC 配置类加 `@EnableWebMvc`，开启 MVC 注解支持与消息转换。
+3. Controller 形参加 `@RequestBody`。
+
+```xml
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.9.0</version>
+</dependency>
+```
+
+```java
+@Configuration
+@ComponentScan("com.itheima.controller")
+@EnableWebMvc
+public class SpringMvcConfig {
+}
+```
+
+JSON 对象：
+
+```json
+{
+  "name": "itheima",
+  "age": 15
+}
+```
+
+```java
+@RequestMapping("/jsonPojoParam")
+@ResponseBody
+public String jsonPojoParam(@RequestBody User user) {
+    System.out.println(user);
+    return "{'module':'json pojo param'}";
+}
+```
+
+JSON 对象数组：
+
+```json
+[
+  {"name": "itheima", "age": 15},
+  {"name": "itcast", "age": 16}
+]
+```
+
+```java
+@RequestMapping("/jsonListParam")
+@ResponseBody
+public String jsonListParam(@RequestBody List<User> users) {
+    System.out.println(users);
+    return "{'module':'json list param'}";
+}
+```
+
+#### 日期参数
+
+默认日期格式通常能接收 `yyyy/MM/dd`，如果前端传 `yyyy-MM-dd` 或带时分秒，需要显式声明格式：
+
+```java
+@RequestMapping("/dateParam")
+@ResponseBody
+public String dateParam(
+        Date date,
+        @DateTimeFormat(pattern = "yyyy-MM-dd") Date date1,
+        @DateTimeFormat(pattern = "yyyy/MM/dd HH:mm:ss") Date date2) {
+    System.out.println(date);
+    System.out.println(date1);
+    System.out.println(date2);
+    return "{'module':'date param'}";
+}
+```
+
+> **易忘：**`@DateTimeFormat` 处理的是请求参数到 Java 日期对象的转换；JSON 日期格式转换属于消息转换器/Jackson 的范畴，不能混为一谈。
+
+### 11. 响应数据：从返回页面到返回 JSON
+
+早期 MVC 会返回页面视图，现在前后端分离更常见，SpringMVC 主要返回 JSON。
+
+返回页面：
+
+```java
+@RequestMapping("/toJumpPage")
+public String toJumpPage() {
+    return "page.jsp";
+}
+```
+
+返回文本：
+
+```java
+@RequestMapping("/toText")
+@ResponseBody
+public String toText() {
+    return "response text";
+}
+```
+
+返回对象或集合时，SpringMVC 会借助 Jackson 把对象转换成 JSON：
+
+```java
+@RequestMapping("/toJsonPojo")
+@ResponseBody
+public User toJsonPojo() {
+    User user = new User();
+    user.setName("itheima");
+    user.setAge(15);
+    return user;
+}
+```
+
+```java
+@RequestMapping("/toJsonList")
+@ResponseBody
+public List<User> toJsonList() {
+    User user1 = new User();
+    user1.setName("itheima");
+    user1.setAge(15);
+
+    User user2 = new User();
+    user2.setName("itcast");
+    user2.setAge(16);
+
+    return Arrays.asList(user1, user2);
+}
+```
+
+> **重难点：**`@ResponseBody` 不是“返回 JSON”的专用注解，它的核心语义是“把返回值写入响应体，不走视图解析”。返回对象能变成 JSON，是因为消息转换器和 Jackson 参与了转换。
+
+### 12. REST 风格：用资源路径统一增删改查
+
+REST 是一种软件架构风格。它强调用 URL 表示资源，用 HTTP 请求方式表示动作：
+
+| 操作 | 传统路径 | REST 路径 | HTTP 方法 |
+| --- | --- | --- | --- |
+| 新增 | `/saveUser` | `/users` | `POST` |
+| 删除 | `/deleteUser?id=1` | `/users/1` | `DELETE` |
+| 修改 | `/updateUser` | `/users` | `PUT` |
+| 根据 ID 查询 | `/getUserById?id=1` | `/users/1` | `GET` |
+| 查询全部 | `/getAllUsers` | `/users` | `GET` |
+
+完整 Controller 写法：
+
+```java
+@RestController
+@RequestMapping("/books")
+public class BookController {
+    @PostMapping
+    public String save(@RequestBody Book book) {
+        System.out.println("book save..." + book);
+        return "{'module':'book save'}";
+    }
+
+    @DeleteMapping("/{id}")
+    public String delete(@PathVariable Integer id) {
+        System.out.println("book delete..." + id);
+        return "{'module':'book delete'}";
+    }
+
+    @PutMapping
+    public String update(@RequestBody Book book) {
+        System.out.println("book update..." + book);
+        return "{'module':'book update'}";
+    }
+
+    @GetMapping("/{id}")
+    public String getById(@PathVariable Integer id) {
+        System.out.println("book getById..." + id);
+        return "{'module':'book getById'}";
+    }
+
+    @GetMapping
+    public String getAll() {
+        System.out.println("book getAll...");
+        return "{'module':'book getAll'}";
+    }
+}
+```
+
+`@RestController` 等价于 `@Controller + @ResponseBody`，适合整个类都返回响应体的 REST 接口。
+
+`@GetMapping`、`@PostMapping`、`@PutMapping`、`@DeleteMapping` 是 `@RequestMapping(method = ...)` 的快捷写法。
+
+`@PathVariable` 用于接收路径变量：
+
+```java
+@DeleteMapping("/{id}")
+public String delete(@PathVariable Integer id) {
+    return "{'module':'book delete'}";
+}
+```
+
+如果路径变量名和形参名不一致，需要显式指定：
+
+```java
+@DeleteMapping("/{bookId}")
+public String delete(@PathVariable("bookId") Integer id) {
+    return "{'module':'book delete'}";
+}
+```
+
+三种常见参数注解对比：
+
+| 注解 | 数据来源 | 典型场景 |
+| --- | --- | --- |
+| `@RequestParam` | URL 参数、表单参数 | `?name=tom`、普通集合 |
+| `@RequestBody` | JSON 请求体 | 新增、修改时提交对象 |
+| `@PathVariable` | REST 路径变量 | `/books/1` 中的 `1` |
+
+> **易错：**REST 中路径写资源名，不写动词。`POST /books` 已经表达“新增图书”，不要写成 `POST /books/save`。
+
+### 13. 静态资源放行
+
+当 `DispatcherServlet` 映射为 `/` 时，SpringMVC 会尝试处理很多请求，包括 `/pages/books.html`、`/js/vue.js` 等静态资源。如果没有对应 Controller，就会 404。
+
+解决方式是配置静态资源处理器：
+
+```java
+@Configuration
+public class SpringMvcSupport extends WebMvcConfigurationSupport {
+    @Override
+    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/pages/**").addResourceLocations("/pages/");
+        registry.addResourceHandler("/js/**").addResourceLocations("/js/");
+        registry.addResourceHandler("/css/**").addResourceLocations("/css/");
+        registry.addResourceHandler("/plugins/**").addResourceLocations("/plugins/");
+    }
+}
+```
+
+并保证该配置类能被 SpringMVC 扫描：
+
+```java
+@Configuration
+@ComponentScan({"com.itheima.controller", "com.itheima.config"})
+@EnableWebMvc
+public class SpringMvcConfig {
+}
+```
+
+> **易忘：**静态资源放行配置属于 SpringMVC 容器，不是 Spring 根容器。写了配置类但没被 `SpringMvcConfig` 扫描到，等于没写。
+
+### 14. SSM 整合：两套配置，一个 Web 入口
+
+SSM 整合的核心是让三层各归其位：
+
+- `Controller`：由 SpringMVC 扫描，负责请求、参数、响应。
+- `Service`：由 Spring 扫描，负责业务与事务。
+- `Dao/Mapper`：由 MyBatis-Spring 扫描代理，交给 Spring 注入。
+- `DataSource`、`SqlSessionFactoryBean`、`PlatformTransactionManager`：由 Spring 配置类创建。
+
+#### Web 入口配置
+
+```java
+public class ServletConfig extends AbstractAnnotationConfigDispatcherServletInitializer {
+    @Override
+    protected Class<?>[] getRootConfigClasses() {
+        return new Class[]{SpringConfig.class};
+    }
+
+    @Override
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class[]{SpringMvcConfig.class};
+    }
+
+    @Override
+    protected String[] getServletMappings() {
+        return new String[]{"/"};
+    }
+
+    @Override
+    protected Filter[] getServletFilters() {
+        CharacterEncodingFilter filter = new CharacterEncodingFilter();
+        filter.setEncoding("utf-8");
+        return new Filter[]{filter};
+    }
+}
+```
+
+> **重难点：**`getRootConfigClasses()` 加载 Spring 根容器，`getServletConfigClasses()` 加载 SpringMVC 容器。SSM 整合时不要再返回空数组，否则 Service、Dao、事务等都不会进入 Spring 根容器。
+
+#### Spring 配置
+
+```java
+@Configuration
+@ComponentScan("com.itheima.service")
+@PropertySource("classpath:jdbc.properties")
+@Import({JdbcConfig.class, MyBatisConfig.class})
+@EnableTransactionManagement
+public class SpringConfig {
+}
+```
+
+#### JDBC 配置
+
+```java
+public class JdbcConfig {
+    @Value("${jdbc.driver}")
+    private String driver;
+    @Value("${jdbc.url}")
+    private String url;
+    @Value("${jdbc.username}")
+    private String username;
+    @Value("${jdbc.password}")
+    private String password;
+
+    @Bean
+    public DataSource dataSource() {
+        DruidDataSource dataSource = new DruidDataSource();
+        dataSource.setDriverClassName(driver);
+        dataSource.setUrl(url);
+        dataSource.setUsername(username);
+        dataSource.setPassword(password);
+        return dataSource;
+    }
+
+    @Bean
+    public PlatformTransactionManager transactionManager(DataSource dataSource) {
+        DataSourceTransactionManager ds = new DataSourceTransactionManager();
+        ds.setDataSource(dataSource);
+        return ds;
+    }
+}
+```
+
+```properties
+jdbc.driver=com.mysql.jdbc.Driver
+jdbc.url=jdbc:mysql://localhost:3306/ssm_db
+jdbc.username=root
+jdbc.password=root
+```
+
+#### MyBatis 配置
+
+```java
+public class MyBatisConfig {
+    @Bean
+    public SqlSessionFactoryBean sqlSessionFactory(DataSource dataSource) {
+        SqlSessionFactoryBean factoryBean = new SqlSessionFactoryBean();
+        factoryBean.setDataSource(dataSource);
+        factoryBean.setTypeAliasesPackage("com.itheima.domain");
+        return factoryBean;
+    }
+
+    @Bean
+    public MapperScannerConfigurer mapperScannerConfigurer() {
+        MapperScannerConfigurer msc = new MapperScannerConfigurer();
+        msc.setBasePackage("com.itheima.dao");
+        return msc;
+    }
+}
+```
+
+#### SpringMVC 配置
+
+```java
+@Configuration
+@ComponentScan("com.itheima.controller")
+@EnableWebMvc
+public class SpringMvcConfig {
+}
+```
+
+#### 图书模块 CRUD
+
+数据库表：
+
+```sql
+create database ssm_db character set utf8;
+use ssm_db;
+
+create table tbl_book(
+    id int primary key auto_increment,
+    type varchar(20),
+    name varchar(50),
+    description varchar(255)
+);
+```
+
+实体类：
+
+```java
+public class Book {
+    private Integer id;
+    private String type;
+    private String name;
+    private String description;
+    // getter/setter/toString
+}
+```
+
+Dao 接口：
+
+```java
+public interface BookDao {
+    @Insert("insert into tbl_book(type, name, description) values(#{type}, #{name}, #{description})")
+    void save(Book book);
+
+    @Update("update tbl_book set type = #{type}, name = #{name}, description = #{description} where id = #{id}")
+    void update(Book book);
+
+    @Delete("delete from tbl_book where id = #{id}")
+    void delete(Integer id);
+
+    @Select("select * from tbl_book where id = #{id}")
+    Book getById(Integer id);
+
+    @Select("select * from tbl_book")
+    List<Book> getAll();
+}
+```
+
+Service：
+
+```java
+@Transactional
+public interface BookService {
+    boolean save(Book book);
+    boolean update(Book book);
+    boolean delete(Integer id);
+    Book getById(Integer id);
+    List<Book> getAll();
+}
+```
+
+```java
+@Service
+public class BookServiceImpl implements BookService {
+    @Autowired
+    private BookDao bookDao;
+
+    public boolean save(Book book) {
+        bookDao.save(book);
+        return true;
+    }
+
+    public boolean update(Book book) {
+        bookDao.update(book);
+        return true;
+    }
+
+    public boolean delete(Integer id) {
+        bookDao.delete(id);
+        return true;
+    }
+
+    public Book getById(Integer id) {
+        return bookDao.getById(id);
+    }
+
+    public List<Book> getAll() {
+        return bookDao.getAll();
+    }
+}
+```
+
+Controller：
+
+```java
+@RestController
+@RequestMapping("/books")
+public class BookController {
+    @Autowired
+    private BookService bookService;
+
+    @PostMapping
+    public boolean save(@RequestBody Book book) {
+        return bookService.save(book);
+    }
+
+    @PutMapping
+    public boolean update(@RequestBody Book book) {
+        return bookService.update(book);
+    }
+
+    @DeleteMapping("/{id}")
+    public boolean delete(@PathVariable Integer id) {
+        return bookService.delete(id);
+    }
+
+    @GetMapping("/{id}")
+    public Book getById(@PathVariable Integer id) {
+        return bookService.getById(id);
+    }
+
+    @GetMapping
+    public List<Book> getAll() {
+        return bookService.getAll();
+    }
+}
+```
+
+业务层单元测试：
+
+```java
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes = SpringConfig.class)
+public class BookServiceTest {
+    @Autowired
+    private BookService bookService;
+
+    @Test
+    public void testGetById() {
+        System.out.println(bookService.getById(1));
+    }
+
+    @Test
+    public void testGetAll() {
+        System.out.println(bookService.getAll());
+    }
+}
+```
+
+> **易错：**IDEA 可能提示 `BookDao` 无法注入，因为它看不到接口实现类。但 MyBatis-Spring 会在运行时创建 Mapper 代理对象并交给 Spring 管理。只要 `MapperScannerConfigurer` 包路径正确，运行时可以正常注入。
+
+### 15. 统一结果封装：前后端约定一种响应格式
+
+如果 Controller 有时返回 `boolean`，有时返回对象，有时返回集合，前端处理会越来越乱。统一结果封装的目的就是让所有接口都返回同一种外壳：
+
+```json
+{
+  "code": 20041,
+  "data": {},
+  "msg": "查询成功"
+}
+```
+
+结果模型：
+
+```java
+public class Result {
+    private Object data;
+    private Integer code;
+    private String msg;
+
+    public Result() {
+    }
+
+    public Result(Integer code, Object data) {
+        this.code = code;
+        this.data = data;
+    }
+
+    public Result(Integer code, Object data, String msg) {
+        this.code = code;
+        this.data = data;
+        this.msg = msg;
+    }
+
+    // getter/setter
+}
+```
+
+状态码：
+
+```java
+public class Code {
+    public static final Integer SAVE_OK = 20011;
+    public static final Integer DELETE_OK = 20021;
+    public static final Integer UPDATE_OK = 20031;
+    public static final Integer GET_OK = 20041;
+
+    public static final Integer SAVE_ERR = 20010;
+    public static final Integer DELETE_ERR = 20020;
+    public static final Integer UPDATE_ERR = 20030;
+    public static final Integer GET_ERR = 20040;
+
+    public static final Integer SYSTEM_ERR = 50001;
+    public static final Integer SYSTEM_TIMEOUT_ERR = 50002;
+    public static final Integer BUSINESS_ERR = 60002;
+}
+```
+
+Controller 改造：
+
+```java
+@RestController
+@RequestMapping("/books")
+public class BookController {
+    @Autowired
+    private BookService bookService;
+
+    @PostMapping
+    public Result save(@RequestBody Book book) {
+        boolean flag = bookService.save(book);
+        return new Result(flag ? Code.SAVE_OK : Code.SAVE_ERR, flag);
+    }
+
+    @PutMapping
+    public Result update(@RequestBody Book book) {
+        boolean flag = bookService.update(book);
+        return new Result(flag ? Code.UPDATE_OK : Code.UPDATE_ERR, flag);
+    }
+
+    @DeleteMapping("/{id}")
+    public Result delete(@PathVariable Integer id) {
+        boolean flag = bookService.delete(id);
+        return new Result(flag ? Code.DELETE_OK : Code.DELETE_ERR, flag);
+    }
+
+    @GetMapping("/{id}")
+    public Result getById(@PathVariable Integer id) {
+        Book book = bookService.getById(id);
+        Integer code = book != null ? Code.GET_OK : Code.GET_ERR;
+        String msg = book != null ? "" : "数据查询失败，请重试";
+        return new Result(code, book, msg);
+    }
+
+    @GetMapping
+    public Result getAll() {
+        List<Book> books = bookService.getAll();
+        Integer code = books != null ? Code.GET_OK : Code.GET_ERR;
+        String msg = books != null ? "" : "数据查询失败，请重试";
+        return new Result(code, books, msg);
+    }
+}
+```
+
+> **重难点：**统一结果封装不是为了“多包一层”好看，而是为了固定前后端协议。前端永远先看 `code` 判断结果，再从 `data` 取业务数据，异常信息从 `msg` 展示。
+
+### 16. 统一异常处理：让异常也走统一协议
+
+如果 Controller 或 Service 抛异常，默认可能返回 Tomcat/SpringMVC 的错误页面或杂乱错误信息。前后端分离项目需要把异常也转成统一 JSON。
+
+统一异常处理器：
+
+```java
+@RestControllerAdvice
+public class ProjectExceptionAdvice {
+    @ExceptionHandler(Exception.class)
+    public Result doException(Exception ex) {
+        System.out.println("异常被统一处理：" + ex.getMessage());
+        return new Result(Code.SYSTEM_ERR, null, "系统繁忙，请稍后再试");
+    }
+}
+```
+
+`@RestControllerAdvice` 可以理解为“给所有 REST Controller 做增强”，`@ExceptionHandler` 指定当前方法处理哪类异常。
+
+更工程化的做法是先区分异常类型：
+
+| 异常类型 | 含义 | 处理思路 |
+| --- | --- | --- |
+| 系统异常 | 数据库、服务器、网络、第三方服务等不可控问题 | 记录日志，给用户统一友好提示 |
+| 业务异常 | 用户操作或业务规则不满足 | 给用户明确可理解提示 |
+| 其他异常 | 未预期问题 | 记录日志，给通用提示 |
+
+自定义系统异常：
+
+```java
+public class SystemException extends RuntimeException {
+    private Integer code;
+
+    public SystemException(Integer code, String message) {
+        super(message);
+        this.code = code;
+    }
+
+    public SystemException(Integer code, String message, Throwable cause) {
+        super(message, cause);
+        this.code = code;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
+}
+```
+
+自定义业务异常：
+
+```java
+public class BusinessException extends RuntimeException {
+    private Integer code;
+
+    public BusinessException(Integer code, String message) {
+        super(message);
+        this.code = code;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
+}
+```
+
+异常处理器分类处理：
+
+```java
+@RestControllerAdvice
+public class ProjectExceptionAdvice {
+    @ExceptionHandler(SystemException.class)
+    public Result doSystemException(SystemException ex) {
+        return new Result(ex.getCode(), null, ex.getMessage());
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public Result doBusinessException(BusinessException ex) {
+        return new Result(ex.getCode(), null, ex.getMessage());
+    }
+
+    @ExceptionHandler(Exception.class)
+    public Result doException(Exception ex) {
+        return new Result(Code.SYSTEM_ERR, null, "系统繁忙，请稍后再试");
+    }
+}
+```
+
+业务代码中抛出：
+
+```java
+public Book getById(Integer id) {
+    if (id == 1) {
+        throw new BusinessException(Code.BUSINESS_ERR, "请不要使用你的技术挑战我的耐性");
+    }
+
+    try {
+        int i = 1 / 0;
+    } catch (Exception e) {
+        throw new SystemException(Code.SYSTEM_TIMEOUT_ERR, "服务器访问超时，请重试", e);
+    }
+
+    return bookDao.getById(id);
+}
+```
+
+> **易错：**`@RestControllerAdvice` 也要被 SpringMVC 扫描到。它处理的是表现层异常响应，所以配置类应在 SpringMVC 的扫描范围内。
+
+### 17. 前后台协议联调：页面只认接口协议
+
+前端页面通过 Axios 调接口时，不应该依赖后端返回的原始对象，而应该依赖统一协议：
+
+```javascript
+axios.get("/books").then((res) => {
+    this.dataList = res.data.data;
+});
+```
+
+新增后根据 `code` 判断操作结果：
+
+```javascript
+axios.post("/books", this.formData).then((res) => {
+    if (res.data.code == 20011) {
+        this.dialogFormVisible = false;
+        this.$message.success("添加成功");
+    } else if (res.data.code == 20010) {
+        this.$message.error("添加失败");
+    } else {
+        this.$message.error(res.data.msg);
+    }
+}).finally(() => {
+    this.getAll();
+});
+```
+
+修改前先根据 ID 查询回显：
+
+```javascript
+axios.get("/books/" + row.id).then((res) => {
+    if (res.data.code == 20041) {
+        this.formData = res.data.data;
+        this.dialogFormVisible4Edit = true;
+    } else {
+        this.$message.error(res.data.msg);
+    }
+});
+```
+
+删除前确认，删除后刷新：
+
+```javascript
+this.$confirm("此操作永久删除当前数据，是否继续？", "提示", {
+    type: "info"
+}).then(() => {
+    axios.delete("/books/" + row.id).then((res) => {
+        if (res.data.code == 20021) {
+            this.$message.success("删除成功");
+        } else {
+            this.$message.error("删除失败");
+        }
+    }).finally(() => {
+        this.getAll();
+    });
+}).catch(() => {
+    this.$message.info("取消删除操作");
+});
+```
+
+> **易忘：**页面调接口时关注的是“协议”，不是后端方法名。只要 REST 路径、HTTP 方法、请求体格式、响应 `code/data/msg` 稳定，前后端就能独立开发。
+
+### 18. 拦截器：Controller 方法前后的统一增强
+
+拦截器 `Interceptor` 是 SpringMVC 提供的动态拦截机制，用于在 Controller 方法执行前后插入逻辑，例如登录校验、权限判断、请求日志、接口耗时统计。
+
+过滤器和拦截器的区别：
+
+| 对比项 | Filter | Interceptor |
+| --- | --- | --- |
+| 所属技术 | Servlet 规范 | SpringMVC |
+| 拦截范围 | 几乎所有 Web 访问 | SpringMVC 管理的 Controller 请求 |
+| 配置位置 | Web 容器 | SpringMVC 配置 |
+| 常见用途 | 编码、跨域、底层请求处理 | 登录、权限、业务级请求增强 |
+
+拦截器类：
+
+```java
+@Component
+public class ProjectInterceptor implements HandlerInterceptor {
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) throws Exception {
+        System.out.println("preHandle...");
+        return true;
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest request,
+                           HttpServletResponse response,
+                           Object handler,
+                           ModelAndView modelAndView) throws Exception {
+        System.out.println("postHandle...");
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request,
+                                HttpServletResponse response,
+                                Object handler,
+                                Exception ex) throws Exception {
+        System.out.println("afterCompletion...");
+    }
+}
+```
+
+配置拦截器，推荐实现 `WebMvcConfigurer`：
+
+```java
+@Configuration
+@ComponentScan("com.itheima.controller")
+@EnableWebMvc
+public class SpringMvcConfig implements WebMvcConfigurer {
+    @Autowired
+    private ProjectInterceptor projectInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(projectInterceptor)
+                .addPathPatterns("/books", "/books/*");
+    }
+}
+```
+
+> **易错：**`/books` 只能匹配 `/books`，不能匹配 `/books/100`。要拦截单层子路径，需要再加 `/books/*`；多层路径可用 `/books/**`。
+
+三个方法的职责：
+
+| 方法 | 执行时机 | 常用程度 | 记忆点 |
+| --- | --- | --- | --- |
+| `preHandle` | Controller 方法执行前 | 最高 | 返回 `true` 放行，返回 `false` 拦截 |
+| `postHandle` | Controller 方法执行后、响应完成前 | 较低 | REST JSON 项目中较少改 `ModelAndView` |
+| `afterCompletion` | 整个请求完成后 | 中等 | 适合清理资源、记录最终日志 |
+
+获取请求头和目标方法：
+
+```java
+public boolean preHandle(HttpServletRequest request,
+                         HttpServletResponse response,
+                         Object handler) throws Exception {
+    String contentType = request.getHeader("Content-Type");
+    HandlerMethod hm = (HandlerMethod) handler;
+    String methodName = hm.getMethod().getName();
+    System.out.println(contentType + " -> " + methodName);
+    return true;
+}
+```
+
+拦截器链按“先进后出”理解：
+
+```java
+@Override
+public void addInterceptors(InterceptorRegistry registry) {
+    registry.addInterceptor(projectInterceptor).addPathPatterns("/books", "/books/*");
+    registry.addInterceptor(projectInterceptor2).addPathPatterns("/books", "/books/*");
+}
+```
+
+当两个拦截器都放行时：
+
+```text
+preHandle 1
+preHandle 2
+Controller 方法
+postHandle 2
+postHandle 1
+afterCompletion 2
+afterCompletion 1
+```
+
+如果第二个拦截器的 `preHandle` 返回 `false`：
+
+```text
+preHandle 1
+preHandle 2
+afterCompletion 1
+```
+
+> **重难点：**`preHandle` 按配置顺序执行；`postHandle` 和 `afterCompletion` 按反向顺序执行。某个拦截器拦截后，后续 Controller 和后续拦截器不再执行，但已经放行过的前置拦截器可能会执行 `afterCompletion`。
+
 ## 尾部复盘导图（Mermaid）
 
-![002.svg](../../../public/blog/SSM/002.svg)
+![004.svg](../../../public/blog/SSM/004.svg)
