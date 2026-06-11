@@ -20,17 +20,20 @@ tags:
 ## 首部记忆导图（Mermaid）
 
 ![start.svg](../../../public/blog/SSM/start.svg)
+
+
 ## 核心正文笔记
 
-这三天的主线可以压成一句话：**Spring 用 IoC/DI 管对象和依赖，用 AOP 管横切增强，用声明式事务保证业务一致性，再通过 IoC 把 MyBatis、数据源、JUnit 等技术整合进同一个容器。**复习时不要先背注解清单，先问每个技术点解决什么问题，再记住它的配置入口。
+这份 SSM 笔记的主线可以压成一句话：**Spring 负责对象创建、依赖注入、横切增强和事务一致性；SpringMVC 负责把 HTTP 请求规范地交给业务接口并返回统一响应；Maven 高级负责把单体学习项目推进到多模块、可复用、可构建、可发布的工程形态。**复习时不要先背注解和标签清单，先问每个技术点解决什么问题，再记住它在项目里的入口位置。
 
 ### 文档结构
 
-这份 SSM 笔记按“先容器、再 Web、再持久层增强、最后项目化”的顺序组织：
+这份 SSM 笔记按“先容器、再 Web、最后工程治理”的顺序组织：
 
 - **第一部分：Spring Framework**，对应下面第 1 到第 6 节，重点是 IoC/DI、AOP、事务和 Spring 整合 MyBatis。
-- **第二部分：SpringMVC**，对应下面第 7 节开始，重点是请求入口、参数绑定、JSON 响应、REST、SSM 整合、统一结果、统一异常和拦截器。
-- **后续预留：MyBatisPlus 与项目整合**，后面继续追加时直接接在 SpringMVC 之后即可。
+- **第二部分：SpringMVC**，对应第 7 到第 18 节，重点是请求入口、参数绑定、JSON 响应、REST、SSM 整合、统一结果、统一异常和拦截器。
+- **第三部分：Maven 高级**，对应第 19 节，重点是分模块开发、依赖传递与冲突、聚合与继承、属性与多环境、跳过测试和 Nexus 私服。
+- **后续扩展：MyBatisPlus 与项目整合**，后面继续追加时建议接在 Maven 高级之后，形成“框架能力 -> Web 接口 -> 工程治理 -> 持久层增强”的复习闭环。
 
 ### 1. Spring 学习主线
 
@@ -2040,6 +2043,401 @@ afterCompletion 1
 #### SpringMVC 尾部复盘导图（Mermaid）
 
 ![springmvc-e.svg](../../../public/blog/SSM/springmvc-e.svg)
+
+### 19. Maven 高级：多模块工程的依赖、构建与发布治理
+
+#### 首部记忆导图（Mermaid）
+![maven-s.svg](../../../public/blog/SSM/maven-s.svg)
+
+
+#### 核心正文笔记
+
+Maven 高级的主线不是多背几个标签，而是解决一个项目变大后的真实问题：**代码拆成多个模块后，如何让模块之间能复用、能统一构建、能统一管版本、能按环境打包，并把团队内部产物共享出去。**所以复习时按“拆 -> 依赖 -> 统一管理 -> 环境切换 -> 私服发布”这条链记，最不容易断。
+
+##### 19.1 分模块开发：先拆边界，再建立依赖
+
+单模块 SSM 项目能跑，但随着业务变多，所有代码挤在一个工程里会带来两个问题：一个功能坏了可能影响整个工程启动；多个业务模块需要相同的 `domain`、`dao`、工具类时，复制代码会让维护成本迅速上升。分模块开发就是把公共能力抽成独立 Maven 模块，再像引用第三方 jar 一样引用自己的模块。
+
+常见拆法有两类：
+
+| 拆分方式 | 例子 | 解决的问题 |
+| --- | --- | --- |
+| 按功能拆 | 订单、商品、用户、支付 | 功能边界清楚，便于多人协作 |
+| 按层拆 | `pojo/domain`、`dao`、`service`、`web` | 公共层可复用，减少重复代码 |
+
+以课程中的 SSM 拆分为例，先抽出 `maven_03_pojo`，把 `Book` 放到 `com.itheima.domain`；再抽出 `maven_04_dao`，把 `BookDao` 放到 `com.itheima.dao`。原来的 Web/SSM 模块删除对应代码后，需要在 `pom.xml` 中依赖新模块：
+
+```xml
+<dependency>
+    <groupId>com.itheima</groupId>
+    <artifactId>maven_03_pojo</artifactId>
+    <version>1.0-SNAPSHOT</version>
+</dependency>
+```
+
+Dao 模块依赖 Pojo 模块，同时还要补上自己编译需要的 MyBatis、MySQL 等依赖：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.itheima</groupId>
+        <artifactId>maven_03_pojo</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.mybatis</groupId>
+        <artifactId>mybatis</artifactId>
+        <version>3.5.6</version>
+    </dependency>
+</dependencies>
+```
+
+> **易忘：**IDEA 里能看到模块，不代表 Maven 仓库里已经有这个模块。其他模块编译时找不到 `maven_03_pojo` 或 `maven_04_dao`，通常是因为被依赖模块还没有执行 `install` 安装到本地仓库。团队协作时则应发布到私服。
+
+分模块的操作口诀是：**创建模块 -> 移动代码 -> 删除原代码 -> 添加依赖 -> 被依赖模块先 install -> 主模块再 compile/test/package。**
+
+##### 19.2 依赖传递与冲突：看懂 Maven 最终选了谁
+
+依赖是当前项目运行或编译所需的 jar。最基本的写法是：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-webmvc</artifactId>
+        <version>5.2.10.RELEASE</version>
+    </dependency>
+</dependencies>
+```
+
+Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么 `A` 通常也能间接使用 `C`。在 `maven_02_ssm -> maven_04_dao -> maven_03_pojo` 这个例子里，即使 Web 模块不直接声明 Pojo，只要 Dao 传递了 Pojo，Web 模块也可能拿到 `Book`。
+
+依赖传递带来的核心风险是**同一个 jar 出现多个版本**。Maven 会做冲突调解，常见规则如下：
+
+| 规则 | 触发场景 | 记忆方式 |
+| --- | --- | --- |
+| 特殊优先 | 同一个 POM 中声明同一资源的不同版本 | 后声明覆盖先声明 |
+| 路径优先 | 不同传递路径深度不同 | 离当前项目越近越优先 |
+| 声明优先 | 传递路径深度相同 | 谁先声明，谁优先 |
+
+> **重难点：**不要只凭脑子猜最终版本。IDEA 的 Maven `Dependencies` 面板或依赖图展示的版本，才是 Maven 最终选择的版本。
+
+如果不想让传递依赖继续向外暴露，有两种方式。
+
+**可选依赖**写在被依赖方，也就是 `B` 不想把自己的 `C` 传给别人：
+
+```xml
+<dependency>
+    <groupId>com.itheima</groupId>
+    <artifactId>maven_03_pojo</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <optional>true</optional>
+</dependency>
+```
+
+**排除依赖**写在使用方，也就是 `A` 明知道 `B` 会传来 `C`，但主动切断它：
+
+```xml
+<dependency>
+    <groupId>com.itheima</groupId>
+    <artifactId>maven_04_dao</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <exclusions>
+        <exclusion>
+            <groupId>com.itheima</groupId>
+            <artifactId>maven_03_pojo</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+```
+
+> **易错：**`optional` 是“我不向外传”，配置在被依赖模块；`exclusions` 是“我不要你传来的某个包”，配置在当前模块。`exclusion` 里不写版本，因为排除的是依赖关系，不是选择另一个版本。
+
+##### 19.3 聚合与继承：一个管构建，一个管配置
+
+多模块项目最怕两件事：构建时漏掉模块，维护依赖时版本到处散落。Maven 用**聚合**解决批量构建，用**继承**解决重复配置和版本统一。
+
+聚合工程通常是没有业务代码的空工程，打包方式必须是 `pom`，通过 `<modules>` 管理多个模块：
+
+```xml
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.itheima</groupId>
+    <artifactId>maven_01_parent</artifactId>
+    <version>1.0-RELEASE</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>../maven_02_ssm</module>
+        <module>../maven_03_pojo</module>
+        <module>../maven_04_dao</module>
+    </modules>
+</project>
+```
+
+对聚合工程执行 `compile`、`install` 等命令时，Maven 会把被聚合模块一起构建，并且会根据模块依赖关系安排顺序。
+
+> **易忘：**`<modules>` 的书写顺序不等于最终构建顺序。Maven 会按模块之间的依赖关系自动调整。
+
+继承关系写在子工程中，子工程通过 `<parent>` 继承父 POM 的配置：
+
+```xml
+<parent>
+    <groupId>com.itheima</groupId>
+    <artifactId>maven_01_parent</artifactId>
+    <version>1.0-RELEASE</version>
+    <relativePath>../maven_01_parent/pom.xml</relativePath>
+</parent>
+```
+
+父工程中直接写在 `<dependencies>` 里的依赖会被子工程继承，适合所有子模块都确实需要的公共依赖。但如果某些依赖只是“部分模块需要”，就不要直接塞给所有子模块，应使用 `<dependencyManagement>` 统一管理版本：
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+子模块真正需要时再声明坐标，版本由父工程提供：
+
+```xml
+<dependency>
+    <groupId>junit</groupId>
+    <artifactId>junit</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+> **重难点：**`dependencyManagement` **不真正引入 jar**，只提供版本管理。子工程不声明 `<dependency>`，依赖就不会出现。
+
+聚合和继承的区别可以这样记：
+
+| 对比项 | 聚合 | 继承 |
+| --- | --- | --- |
+| 目的 | 批量构建多个模块 | 复用父 POM 配置、统一版本 |
+| 配置位置 | 父/聚合工程写 `<modules>` | 子工程写 `<parent>` |
+| 父工程是否知道子工程 | 知道，因为列了模块 | 不一定知道，子工程主动继承 |
+| 相同点 | 打包方式都常为 `pom`，都可以没有业务代码 | 实战中常合并在同一个父工程 |
+
+##### 19.4 属性、资源过滤与版本语义：把会变的东西抽出来
+
+即使有了 `dependencyManagement`，如果 Spring 相关 jar 都写 `5.2.10.RELEASE`，升级时仍然可能漏改。属性就是 POM 里的变量，把版本号集中到 `<properties>`：
+
+```xml
+<properties>
+    <spring.version>5.2.10.RELEASE</spring.version>
+    <junit.version>4.12</junit.version>
+    <mybatis-spring.version>1.3.0</mybatis-spring.version>
+</properties>
+```
+
+依赖中通过 `${属性名}` 引用：
+
+```xml
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-webmvc</artifactId>
+    <version>${spring.version}</version>
+</dependency>
+```
+
+Maven 属性也可以进入资源文件。例如让 `jdbc.properties` 使用 Maven 中的 `jdbc.url`：
+
+```properties
+jdbc.driver=com.mysql.jdbc.Driver
+jdbc.url=${jdbc.url}
+jdbc.username=root
+jdbc.password=root
+```
+
+但资源文件中的 `${}` 默认不会被 Maven 替换，必须开启资源过滤：
+
+```xml
+<build>
+    <resources>
+        <resource>
+            <directory>${project.basedir}/src/main/resources</directory>
+            <filtering>true</filtering>
+        </resource>
+    </resources>
+</build>
+```
+
+> **易错：**`${project.basedir}` 是当前项目所在目录。把这段配置放到父工程后，子工程继承时会按各自子工程目录解析，比在父工程里手写 `../maven_02_ssm/src/main/resources` 更通用。
+
+Web 项目打包时如果没有 `web.xml`，可能出现找不到入口配置的错误。常见处理方式有两种：补一个 `WEB-INF/web.xml`，或者让 war 插件忽略该检查：
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-war-plugin</artifactId>
+            <version>3.2.3</version>
+            <configuration>
+                <failOnMissingWebXml>false</failOnMissingWebXml>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+版本号也要会读：
+
+| 版本类型 | 含义 | 使用场景 |
+| --- | --- | --- |
+| `SNAPSHOT` | 快照版本，会随着开发不断更新 | 团队内部开发中频繁发布 |
+| `RELEASE` | 发布版本，内容稳定，不应随意变动 | 阶段性里程碑或对外发布 |
+| `alpha` / `beta` | 内测 / 公测，稳定性低于正式版 | 认识即可 |
+| 纯数字版 | 常见稳定发布写法 | 第三方依赖常见 |
+
+##### 19.5 多环境与跳过测试：构建时决定用哪套配置
+
+开发、测试、生产环境通常不能共用一个数据库地址。Maven 的 `profiles` 可以把不同环境的属性放在 POM 中，构建时选择激活哪一套：
+
+```xml
+<profiles>
+    <profile>
+        <id>env_dep</id>
+        <properties>
+            <jdbc.url>jdbc:mysql://127.1.1.1:3306/ssm_db</jdbc.url>
+        </properties>
+        <activation>
+            <activeByDefault>true</activeByDefault>
+        </activation>
+    </profile>
+
+    <profile>
+        <id>env_pro</id>
+        <properties>
+            <jdbc.url>jdbc:mysql://127.2.2.2:3306/ssm_db</jdbc.url>
+        </properties>
+    </profile>
+
+    <profile>
+        <id>env_test</id>
+        <properties>
+            <jdbc.url>jdbc:mysql://127.3.3.3:3306/ssm_db</jdbc.url>
+        </properties>
+    </profile>
+</profiles>
+```
+
+命令行切换环境：
+
+```bash
+mvn install -P env_test
+```
+
+> **重难点：**`profiles` 只负责提供不同属性值；要让配置文件真的变成不同环境的值，还要配合资源过滤 `<filtering>true</filtering>`。
+
+跳过测试有三种常见方式：IDEA Maven 面板的 `Skip Tests` 按钮、Surefire 插件配置、命令行参数。需要精细排除某些测试类时，用插件更清楚：
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>2.12.4</version>
+            <configuration>
+                <skipTests>false</skipTests>
+                <excludes>
+                    <exclude>**/BookServiceTest.java</exclude>
+                </excludes>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+命令行跳过所有测试：
+
+```bash
+mvn install -DskipTests
+```
+
+> **易忘：**`-DskipTests` 只有在执行的生命周期经过 `test` 时才有意义。比如 `install`、`package` 会经过测试阶段，单独执行 `compile` 不经过 `test`，自然看不出跳过效果。
+
+##### 19.6 私服：把团队内部 jar 放到可共享的位置
+
+本地 `install` 只能让自己电脑用到模块，团队成员之间不能靠拷贝 jar 协作。私服就是公司内部搭建的 Maven 资源服务器，常用实现是 Nexus。它的核心价值是两点：**内部模块共享**和**外部依赖缓存**。
+
+Nexus 仓库常分三类：
+
+| 仓库类型 | 作用 | 能否保存资源 |
+| --- | --- | --- |
+| hosted 宿主仓库 | 保存公司自研包、中央仓库没有的第三方包 | 能 |
+| proxy 代理仓库 | 代理中央仓库或其他公共仓库 | 间接缓存 |
+| group 仓库组 | 把多个仓库合成一个访问入口 | 不能直接保存资源 |
+
+本地 Maven 访问私服要改 `settings.xml`。上传需要账号密码，`server` 的 `id` 要和项目 POM 中上传仓库的 `id` 对上：
+
+```xml
+<servers>
+    <server>
+        <id>itheima-snapshot</id>
+        <username>admin</username>
+        <password>admin</password>
+    </server>
+    <server>
+        <id>itheima-release</id>
+        <username>admin</username>
+        <password>admin</password>
+    </server>
+</servers>
+```
+
+下载通常通过镜像指向仓库组：
+
+```xml
+<mirrors>
+    <mirror>
+        <id>maven-public</id>
+        <mirrorOf>*</mirrorOf>
+        <url>http://localhost:8081/repository/maven-public/</url>
+    </mirror>
+</mirrors>
+```
+
+工程发布到私服的位置写在 `distributionManagement`，一般放在父 POM 中让子模块继承：
+
+```xml
+<distributionManagement>
+    <repository>
+        <id>itheima-release</id>
+        <url>http://localhost:8081/repository/itheima-release/</url>
+    </repository>
+    <snapshotRepository>
+        <id>itheima-snapshot</id>
+        <url>http://localhost:8081/repository/itheima-snapshot/</url>
+    </snapshotRepository>
+</distributionManagement>
+```
+
+发布命令：
+
+```bash
+mvn deploy
+```
+
+> **易错：**`deploy` 上传到哪个仓库，和版本号语义有关。`1.0-SNAPSHOT` 会走 `snapshotRepository`；发布版会走 `repository`。同时，`distributionManagement` 的仓库 `id` 必须能在 `settings.xml` 的 `<servers>` 中找到对应认证信息。
+
+##### Maven 高级复习闭环
+
+把这些知识放回一个完整流程里：先把单体 SSM 按边界拆成 Pojo、Dao、Web 等模块；模块之间通过 Maven 坐标依赖，被依赖模块先 `install` 或 `deploy`；依赖传递提高复用，但要用冲突规则、`optional`、`exclusions` 控制风险；项目变多后用聚合统一构建，用继承和 `dependencyManagement` 统一依赖配置；版本号、数据库地址等易变值抽到 `properties`，再用 `profiles` 和资源过滤在构建时切换环境；最后用 Nexus 私服让团队共享内部模块，并缓存外部依赖。
+
+#### 尾部复盘导图（Mermaid）
+
+![maven-e.svg](../../../public/blog/SSM/maven-e.svg)
+
 
 
 ## 尾部复盘导图（Mermaid）
