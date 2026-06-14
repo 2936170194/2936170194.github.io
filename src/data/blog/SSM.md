@@ -1,67 +1,124 @@
 ---
 title: SSM
 author: 李杰
-pubDatetime: 2026-06-30T00:00:00Z
+pubDatetime: 2026-06-03T00:00:00Z
 featured: false
 draft: false
-description: SSM学习
-tags: 
+description: SSM、Maven、SpringBoot、MyBatisPlus复习笔记
+tags:
  - 后端
  - SSM
- - spring
+ - Spring
  - SpringMVC
+ - Maven
+ - SpringBoot
  - MyBatisPlus
 ---
 
+# SSM 复习笔记
 
-
-# SSM复习笔记
+这份笔记按 `Spring -> SpringMVC -> Maven -> SpringBoot -> MyBatisPlus` 的顺序整理。复习时不要先背注解清单，而要先记住每一层在项目中的职责：**Spring 管对象和事务，SpringMVC 管请求和响应，Maven 管工程与依赖，SpringBoot 管快速装配，MyBatisPlus 管持久层增强。**
 
 ## 首部记忆导图（Mermaid）
 
-![start.svg](../../../public/blog/SSM/start.svg)
+```mermaid
+flowchart TB
+    Start["SSM复习总线：从容器到接口，再到工程化与持久层增强"]:::root
 
+    Start --> Spring["1 Spring：对象不再自己new"]:::spring
+    Spring --> IoC["IoC/DI：对象创建权交给容器"]:::spring
+    IoC --> AOP["AOP：对容器Bean创建代理"]:::spring
+    AOP --> Tx["事务：AOP在业务方法前后控制提交/回滚"]:::spring
+    IoC --> MyBatis["整合MyBatis：SqlSessionFactory与Mapper代理进容器"]:::spring
+
+    Start --> MVC["2 SpringMVC：HTTP进入Controller"]:::mvc
+    MVC --> Dispatcher["DispatcherServlet统一入口"]:::mvc
+    Dispatcher --> Binding["参数绑定：普通/POJO/JSON/路径变量/日期"]:::mvc
+    Binding --> REST["REST：资源路径 + HTTP动作"]:::mvc
+    REST --> Protocol["统一结果 + 统一异常 + 拦截器"]:::mvc
+    Protocol --> SSM["SSM整合：Controller -> Service -> Dao"]:::mvc
+
+    Start --> Maven["3 Maven：工程从单体到多模块"]:::maven
+    Maven --> Module["分模块：domain/dao/service/web分离"]:::maven
+    Module --> Dependency["依赖传递、冲突、可选、排除"]:::maven
+    Dependency --> Build["聚合/继承/属性/profiles/私服"]:::maven
+
+    Start --> Boot["4 SpringBoot：约定优于配置"]:::boot
+    Boot --> Starter["starter减少坐标"]:::boot
+    Boot --> AutoConfig["自动配置减少配置类"]:::boot
+    Boot --> Config["application.yml + profile + 命令行覆盖"]:::boot
+    Boot --> BootSSM["Boot整合JUnit/MyBatis/SSM"]:::boot
+
+    Start --> MP["5 MyBatisPlus：MyBatis增强不替代"]:::mp
+    MP --> BaseMapper["BaseMapper通用CRUD"]:::mp
+    BaseMapper --> Wrapper["Wrapper/Lambda条件构造"]:::mp
+    Wrapper --> Plugin["分页、逻辑删除、乐观锁插件"]:::mp
+    Plugin --> Generator["代码生成器与IService快速开发"]:::mp
+
+    Tx -.->|核心因果| Protocol
+    Protocol -.->|工程化落地| Build
+    BootSSM -.->|简化传统SSM配置| MP
+
+    classDef root fill:#263238,stroke:#111,color:#fff,stroke-width:2px;
+    classDef spring fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20;
+    classDef mvc fill:#E3F2FD,stroke:#1565C0,color:#0D47A1;
+    classDef maven fill:#FFF3E0,stroke:#EF6C00,color:#E65100;
+    classDef boot fill:#F3E5F5,stroke:#7B1FA2,color:#4A148C;
+    classDef mp fill:#E0F2F1,stroke:#00796B,color:#004D40;
+```
 
 ## 核心正文笔记
 
-这份 SSM 笔记的主线可以压成一句话：**Spring 负责对象创建、依赖注入、横切增强和事务一致性；SpringMVC 负责把 HTTP 请求规范地交给业务接口并返回统一响应；Maven 高级负责把单体学习项目推进到多模块、可复用、可构建、可发布的工程形态。**复习时不要先背注解和标签清单，先问每个技术点解决什么问题，再记住它在项目里的入口位置。
+### 一、Spring：先把对象交给容器，再让容器增强对象
 
-### 文档结构
+#### Spring 记忆导图（Mermaid）
 
-这份 SSM 笔记按“先容器、再 Web、最后工程治理”的顺序组织：
+```mermaid
+flowchart TB
+    S["Spring Framework"]:::root
+    S --> Why["解决两类痛点：耦合高、重复增强散落"]:::node
+    Why --> IoC["IoC：对象创建权反转"]:::node
+    IoC --> DI["DI：容器建立Bean之间的依赖关系"]:::node
+    DI --> Config["配置方式演进：XML -> 注解 -> 纯注解"]:::node
+    Config --> Bean["Bean管理：id/class/name/scope/生命周期"]:::node
+    Config --> Third["第三方Bean：DataSource等用@Bean或XML管理"]:::node
+    Third --> MyBatis["整合MyBatis：DataSource -> SqlSessionFactoryBean -> MapperScannerConfigurer"]:::node
+    IoC --> AOP["AOP：匹配切入点，为目标Bean创建代理"]:::node
+    AOP --> Advice["通知类型：前置/后置/环绕/返回后/异常后"]:::node
+    AOP --> Tx["声明式事务：@Transactional + 事务管理器"]:::node
+    Tx --> Prop["传播行为：REQUIRED默认加入，REQUIRES_NEW新开事务"]:::node
+    Tx --> Rollback["回滚规则：默认RuntimeException和Error，受检异常需rollbackFor"]:::warn
 
-- **第一部分：Spring Framework**，对应下面第 1 到第 6 节，重点是 IoC/DI、AOP、事务和 Spring 整合 MyBatis。
-- **第二部分：SpringMVC**，对应第 7 到第 18 节，重点是请求入口、参数绑定、JSON 响应、REST、SSM 整合、统一结果、统一异常和拦截器。
-- **第三部分：Maven 高级**，对应第 19 节，重点是分模块开发、依赖传递与冲突、聚合与继承、属性与多环境、跳过测试和 Nexus 私服。
-- **后续扩展：MyBatisPlus 与项目整合**，后面继续追加时建议接在 Maven 高级之后，形成“框架能力 -> Web 接口 -> 工程治理 -> 持久层增强”的复习闭环。
+    classDef root fill:#2E7D32,stroke:#1B5E20,color:#fff,stroke-width:2px;
+    classDef node fill:#E8F5E9,stroke:#66BB6A,color:#1B5E20;
+    classDef warn fill:#FFF8E1,stroke:#F9A825,color:#5D4037;
+```
 
-### 1. Spring 学习主线
+Spring Framework 是 Spring 家族的基础。复习 Spring 时，最重要的不是记“有哪些注解”，而是记住它的主线：**IoC/DI 先把对象及依赖关系放进容器；AOP 才能围绕容器中的 Bean 创建代理；声明式事务又是 AOP 的典型应用。**
 
-#### Spring 首部记忆导图
+#### 1. IoC/DI：从“我来 new”到“容器给我”
 
-![spring-s.svg](../../../public/blog/SSM/spring-s.svg)
+传统代码里，业务层常常写成这样：
 
-Spring 这里主要指 **Spring Framework**。它是 SpringBoot、SpringCloud 等生态项目的底层基础。课程中的四块重点是：
+```java
+public class BookServiceImpl implements BookService {
+    private BookDao bookDao = new BookDaoImpl();
 
-- `IoC/DI`：把对象创建和对象关系交给容器，降低业务代码耦合
-- `Spring 整合 MyBatis`：IoC/DI 的典型应用，把数据源、`SqlSessionFactory`、Mapper 代理交给 Spring
-- `AOP`：不修改原始代码，对方法做统一增强
-- `声明式事务`：AOP 的典型应用，在业务层保证多个数据库操作同成功同失败
+    public void save() {
+        System.out.println("book service save ...");
+        bookDao.save();
+    }
+}
+```
 
-![Spring Framework 架构图](../../../public/blog/SSM/spring_day01/assets/1629720945720.png)
-
-> **重难点：**IoC、AOP、事务不是三件孤立的事。IoC 先让对象进入容器，AOP 才能基于容器中的 Bean 创建代理，事务又依赖 AOP 在业务方法前后开启、提交或回滚事务。
-
-### 2. IoC/DI：把 new 和依赖关系交给容器
-
-没有 Spring 时，业务层常见写法是 `private BookDao bookDao = new BookDaoImpl();`。这种写法的问题是：业务层知道了具体实现类，一旦 Dao 实现变化，Service 也跟着改。Spring 的做法是把对象创建权转交给外部容器，这就是 **IoC 控制反转**；容器再把 Service 需要的 Dao 注入进去，这就是 **DI 依赖注入**。
+这段代码的问题不是能不能运行，而是 `BookServiceImpl` 直接知道了 `BookDaoImpl`，实现类一变，业务层也要跟着改。Spring 的解法是把对象创建权交给外部容器，这就是 **IoC 控制反转**；再把需要的对象注入进来，这就是 **DI 依赖注入**。
 
 | 概念 | 记忆方式 | 解决的问题 |
 | --- | --- | --- |
-| `IoC` | 创建权反转 | 不在业务代码里主动 `new` |
-| `IoC 容器` | Spring 提供的对象仓库 | 创建、初始化、保存 Bean |
-| `Bean` | 容器管理的对象 | Service、Dao、工具类、第三方对象 |
-| `DI` | 依赖关系注入 | 让 Service 拿到容器中的 Dao |
+| `IoC` | 创建权反转 | 不在业务代码里主动 `new` 依赖对象 |
+| `IoC容器` | Spring 管对象的仓库 | 负责创建、初始化、保存 Bean |
+| `Bean` | 被容器管理的对象 | Service、Dao、第三方对象都可以是 Bean |
+| `DI` | 依赖关系注入 | 把 Dao 注入给 Service |
 
 最小 XML 配置如下：
 
@@ -86,51 +143,29 @@ BookService bookService = (BookService) ctx.getBean("bookService");
 bookService.save();
 ```
 
-> **易错：**`property name="bookDao"` 和 `ref="bookDao"` 不是同一个含义。`name` 对应 `setBookDao(...)` 这个属性入口，`ref` 对应容器中 id 为 `bookDao` 的 Bean。
+> **易错点：**`property name="bookDao"` 指的是 `setBookDao(...)` 这个注入入口；`ref="bookDao"` 指的是容器里 id 为 `bookDao` 的 Bean。两者同名只是刚好同名，含义完全不同。
 
-#### Bean 基础配置
+#### 2. Bean 配置：id、class、scope 与生命周期
 
-`<bean id="" class=""/>` 是核心。`id` 是容器中的唯一标识，`class` 必须写可实例化的实现类，不能写接口。`name` 可以给 Bean 起多个别名，别名可以用空格、逗号、分号分隔。
+`<bean id="" class=""/>` 是 XML 管理对象的基本单元。`id` 是容器内唯一标识，`class` 必须写可实例化的实现类，不能写接口。`name` 可以给 Bean 起别名，多个别名可用空格、逗号、分号分隔。
 
 `scope` 控制 Bean 的作用范围：
 
 | scope | 含义 | 典型场景 |
 | --- | --- | --- |
 | `singleton` | 默认值，容器中一个对象 | 大多数 Service、Dao、工具类 |
-| `prototype` | 每次获取都创建新对象 | 有状态、每次需要独立实例的对象 |
+| `prototype` | 每次获取都创建新对象 | 有状态、每次都需要独立实例的对象 |
 
-> **易忘：**单例 Bean 适合无状态对象。若 Bean 有成员变量存放请求数据，多线程共用时可能产生线程安全问题。封装请求数据的实体对象通常不交给 Spring 容器统一管理。
+> **易忘点：**单例 Bean 适合无状态对象。若 Bean 的成员变量保存了请求级数据，多线程共用时可能出现线程安全问题。
 
-#### Bean 实例化与生命周期
+Bean 的生命周期可以按“容器造对象”的过程记：
 
-Spring 常见实例化方式有三种：无参构造方法、静态工厂、实例工厂。平时最常用的是 **无参构造方法**，整合框架时常见 **FactoryBean**。
-
-```java
-public class UserDaoFactoryBean implements FactoryBean<UserDao> {
-    public UserDao getObject() {
-        return new UserDaoImpl();
-    }
-
-    public Class<?> getObjectType() {
-        return UserDao.class;
-    }
-
-    public boolean isSingleton() {
-        return true;
-    }
-}
-```
-
-生命周期的顺序要按“容器创建对象”的过程记：
-
-1. 分配内存并创建对象
-2. 执行构造方法
-3. 执行属性注入，也就是 setter 或构造器注入
-4. 执行初始化方法
-5. 业务使用 Bean
-6. 关闭容器时执行销毁方法
-
-XML 生命周期配置：
+1. 分配内存并创建对象。
+2. 执行构造方法。
+3. 注入属性。
+4. 执行初始化方法。
+5. 业务使用 Bean。
+6. 容器关闭时执行销毁方法。
 
 ```xml
 <bean id="bookDao"
@@ -139,156 +174,10 @@ XML 生命周期配置：
       destroy-method="destroy"/>
 ```
 
-```java
-ClassPathXmlApplicationContext ctx =
-    new ClassPathXmlApplicationContext("applicationContext.xml");
-ctx.registerShutdownHook(); // JVM 退出前关闭容器
-// ctx.close();             // 立即关闭容器
-```
-
-> **易错：**`ApplicationContext` 接口本身没有 `close()` 和 `registerShutdownHook()`。需要使用 `ClassPathXmlApplicationContext` 或其父接口 `ConfigurableApplicationContext`。
-
-#### DI 注入方式
-
-setter 注入适合可选依赖，构造器注入适合对象创建时必须具备的强依赖。自己写的模块课程中推荐 setter 注入，第三方框架根据它提供的 API 决定。
-
-```xml
-<!-- setter 注入引用类型 -->
-<property name="bookDao" ref="bookDao"/>
-
-<!-- setter 注入简单类型 -->
-<property name="databaseName" value="mysql"/>
-
-<!-- 构造器注入引用类型 -->
-<constructor-arg name="bookDao" ref="bookDao"/>
-
-<!-- 构造器注入简单类型 -->
-<constructor-arg name="connectionNum" value="10"/>
-```
-
-构造器注入还可以用 `type` 或 `index`，但它们分别会和参数类型、参数顺序耦合。复习时记住：**`name` 看形参名，`type` 看类型，`index` 看位置。**
-
-集合注入常用标签：
-
-```xml
-<property name="list">
-    <list>
-        <value>itheima</value>
-        <value>boxuegu</value>
-    </list>
-</property>
-
-<property name="map">
-    <map>
-        <entry key="country" value="china"/>
-        <entry key="city" value="kaifeng"/>
-    </map>
-</property>
-
-<property name="properties">
-    <props>
-        <prop key="driver">com.mysql.jdbc.Driver</prop>
-    </props>
-</property>
-```
-
-XML 自动装配用 `autowire`：
-
-```xml
-<bean id="bookService"
-      class="com.itheima.service.impl.BookServiceImpl"
-      autowire="byType"/>
-```
-
-> **易错：**`byType` 要求容器中同类型 Bean 唯一，否则抛 `NoUniqueBeanDefinitionException`。`byName` 根据 setter 推出的属性名找 Bean，找不到可能注入 `null`，变量名与配置耦合更强。
-
-#### 外部 properties 文件
-
-数据库四要素不应写死在 XML 中。XML 方式先开启 `context` 命名空间，再加载配置文件：
-
-```xml
-<context:property-placeholder
-    location="classpath:jdbc.properties"
-    system-properties-mode="NEVER"/>
-
-<bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource">
-    <property name="driverClassName" value="${jdbc.driver}"/>
-    <property name="url" value="${jdbc.url}"/>
-    <property name="username" value="${jdbc.username}"/>
-    <property name="password" value="${jdbc.password}"/>
-</bean>
-```
-
-```properties
-jdbc.driver=com.mysql.jdbc.Driver
-jdbc.url=jdbc:mysql://127.0.0.1:3306/spring_db
-jdbc.username=root
-jdbc.password=root
-```
-
-> **易忘：**不要随手把 key 写成 `username`。`property-placeholder` 默认可能读取系统环境变量，导致 `${username}` 取到电脑用户名。解决方式是使用 `jdbc.username` 这类带前缀的 key，或配置 `system-properties-mode="NEVER"`。
-
-#### 核心容器
-
-`ApplicationContext` 是最常用的 Spring 容器接口，常用实现类如下：
-
-| 创建方式 | 说明 | 复习结论 |
-| --- | --- | --- |
-| `ClassPathXmlApplicationContext` | 从类路径加载 XML | 常用 |
-| `FileSystemXmlApplicationContext` | 从文件系统路径加载 XML | 路径耦合强，了解 |
-| `AnnotationConfigApplicationContext` | 从配置类加载 | 纯注解开发常用 |
-
-Bean 获取方式：
-
-```java
-ctx.getBean("bookDao");                    // 按名称，需强转
-ctx.getBean("bookDao", BookDao.class);     // 按名称 + 类型
-ctx.getBean(BookDao.class);                // 按类型，要求同类型唯一
-```
-
-`BeanFactory` 是 IoC 容器的顶层接口，默认延迟加载 Bean；`ApplicationContext` 功能更完整，默认容器初始化时立即创建单例 Bean。若想让某个 Bean 延迟加载，可配置 `lazy-init="true"`。
-
-### 3. 注解开发：从 XML 转向配置类
-
-注解开发的核心变化是：用类上的注解代替 XML 中的 `<bean>`，用配置类代替 `applicationContext.xml`。
-
-```java
-@Configuration
-@ComponentScan("com.itheima")
-public class SpringConfig {
-}
-```
-
-```java
-ApplicationContext ctx =
-    new AnnotationConfigApplicationContext(SpringConfig.class);
-```
-
-定义 Bean 的四个常用注解：
-
-| 注解 | 层次语义 | 本质 |
-| --- | --- | --- |
-| `@Component` | 普通组件 | 交给 Spring 管理 |
-| `@Controller` | 表现层 | `@Component` 衍生 |
-| `@Service` | 业务层 | `@Component` 衍生 |
-| `@Repository` | 数据层 | `@Component` 衍生 |
-
-```java
-@Repository("bookDao")
-public class BookDaoImpl implements BookDao {
-    public void save() {
-        System.out.println("book dao save ...");
-    }
-}
-```
-
-> **易错：**`@Component`、`@Service`、`@Repository` 不能写在接口上，因为接口无法实例化。通常写在实现类上。
-
-注解版作用域和生命周期：
+在注解开发中对应的是：
 
 ```java
 @Repository
-@Scope("prototype")
 public class BookDaoImpl implements BookDao {
     @PostConstruct
     public void init() {
@@ -302,36 +191,27 @@ public class BookDaoImpl implements BookDao {
 }
 ```
 
-> **易忘：**JDK 9 以后如果找不到 `@PostConstruct` 和 `@PreDestroy`，需要补 `javax.annotation-api` 依赖。
+#### 3. DI 注入方式：setter、构造器、自动装配、集合
 
-#### 注解版依赖注入
+XML 中常见注入方式有两类。引用类型用 `ref`，简单类型用 `value`：
 
-`@Autowired` 用于引用类型注入，默认先按类型找。若同类型 Bean 有多个，再尝试按变量名匹配 Bean 名称；仍不能确定时，用 `@Qualifier` 明确指定。
-
-```java
-@Service
-public class BookServiceImpl implements BookService {
-    @Autowired
-    @Qualifier("bookDao")
-    private BookDao bookDao;
-
-    public void save() {
-        bookDao.save();
-    }
-}
+```xml
+<bean id="bookService" class="com.itheima.service.impl.BookServiceImpl">
+    <property name="bookDao" ref="bookDao"/>
+    <property name="databaseName" value="spring_db"/>
+</bean>
 ```
 
-`@Value` 用于简单类型或字符串：
+构造器注入用 `constructor-arg`：
 
-```java
-@Repository
-public class BookDaoImpl implements BookDao {
-    @Value("${name}")
-    private String name;
-}
+```xml
+<bean id="bookService" class="com.itheima.service.impl.BookServiceImpl">
+    <constructor-arg name="bookDao" ref="bookDao"/>
+    <constructor-arg name="msg" value="hello"/>
+</bean>
 ```
 
-配置类加载 properties：
+注解开发中，常用组合是：
 
 ```java
 @Configuration
@@ -341,11 +221,34 @@ public class SpringConfig {
 }
 ```
 
-> **易错：**`@Qualifier` 不能单独使用，必须配合 `@Autowired`。`@PropertySource` 可以写数组加载多个文件，但不支持 `*.properties` 通配符。
+```java
+@Service
+public class BookServiceImpl implements BookService {
+    @Autowired
+    @Qualifier("bookDao")
+    private BookDao bookDao;
 
-#### 管理第三方 Bean：@Bean 与 @Import
+    @Value("${jdbc.url}")
+    private String url;
+}
+```
 
-第三方类在 jar 包中，不能去它源码上加 `@Component`。这时在配置类中写方法，并用 `@Bean` 把返回值交给容器。
+| 注解 | 用途 | 记忆点 |
+| --- | --- | --- |
+| `@Component` | 通用 Bean | 不好归类时使用 |
+| `@Controller` | 表现层 Bean | SpringMVC 控制器 |
+| `@Service` | 业务层 Bean | 事务通常加在这里 |
+| `@Repository` | 数据层 Bean | Dao/Mapper 相关 |
+| `@Autowired` | 按类型自动装配 | 类型有多个时会产生歧义 |
+| `@Qualifier` | 配合 `@Autowired` 指定名称 | 解决同类型多个 Bean |
+| `@Value` | 注入简单值或配置项 | `${key}` 读取配置 |
+| `@PropertySource` | 加载 properties | 纯注解配置常用 |
+
+> **重难点：**`@Autowired` 默认按类型装配。若同类型有多个 Bean，不要以为它会“聪明地猜对”，应配合 `@Qualifier` 或使用更清晰的构造器注入。
+
+#### 4. 第三方 Bean：DataSource 是典型案例
+
+第三方类不能直接改源码加 `@Component`，因此常用 `@Bean` 方法交给容器管理：
 
 ```java
 public class JdbcConfig {
@@ -370,83 +273,27 @@ public class JdbcConfig {
 }
 ```
 
-主配置类引入外部配置类：
+主配置类引入外部配置：
 
 ```java
 @Configuration
 @ComponentScan("com.itheima")
 @PropertySource("classpath:jdbc.properties")
-@Import({JdbcConfig.class})
+@Import(JdbcConfig.class)
 public class SpringConfig {
 }
 ```
 
-如果 `@Bean` 方法需要引用类型参数，Spring 会按类型从容器自动装配：
+> **易错点：**XML 加载 properties 时，如果 key 写成 `username`，可能被系统环境变量覆盖。更稳妥的命名是 `jdbc.username`，或在 XML 中设置 `system-properties-mode="NEVER"`。
 
-```java
-@Bean
-public DataSource dataSource(BookDao bookDao) {
-    System.out.println(bookDao);
-    DruidDataSource ds = new DruidDataSource();
-    return ds;
-}
-```
+#### 5. Spring 整合 MyBatis：让工厂和 Mapper 进容器
 
-> **易错：**创建 Druid 时变量类型最好写 `DruidDataSource ds = new DruidDataSource();`。如果写成 `DataSource ds`，接口上没有 Druid 相关 setter，无法设置连接属性。
+整合 MyBatis 的核心不是“把 MyBatis 配置挪个地方”，而是让 Spring 管两件事：
 
-### 4. Spring 整合 MyBatis 与 JUnit
+1. `SqlSessionFactory` 的创建。
+2. Mapper 接口代理对象的创建与扫描。
 
-整合 MyBatis 的本质是：**把 MyBatis 原本自己创建和管理的关键对象交给 Spring 容器。**真正需要 Spring 管的是 `SqlSessionFactory` 以及 Mapper 接口代理。
-
-准备数据表和实体：
-
-```sql
-create database spring_db character set utf8;
-use spring_db;
-
-create table tbl_account(
-    id int primary key auto_increment,
-    name varchar(35),
-    money double
-);
-```
-
-Mapper 接口可以使用 MyBatis 注解：
-
-```java
-public interface AccountDao {
-    @Insert("insert into tbl_account(name,money) values(#{name},#{money})")
-    void save(Account account);
-
-    @Delete("delete from tbl_account where id = #{id}")
-    void delete(Integer id);
-
-    @Update("update tbl_account set name = #{name}, money = #{money} where id = #{id}")
-    void update(Account account);
-
-    @Select("select * from tbl_account")
-    List<Account> findAll();
-
-    @Select("select * from tbl_account where id = #{id}")
-    Account findById(Integer id);
-}
-```
-
-Service 交给 Spring 管理，Dao 通过自动装配拿到 Mapper 代理对象：
-
-```java
-@Service
-public class AccountServiceImpl implements AccountService {
-    @Autowired
-    private AccountDao accountDao;
-
-    public Account findById(Integer id) {
-        return accountDao.findById(id);
-    }
-}
-```
-
-MyBatis 整合配置类记住两个核心 Bean：
+关键配置如下：
 
 ```java
 public class MybatisConfig {
@@ -467,7 +314,7 @@ public class MybatisConfig {
 }
 ```
 
-主配置类组合 Spring、Jdbc、MyBatis：
+完整主配置类：
 
 ```java
 @Configuration
@@ -478,9 +325,9 @@ public class SpringConfig {
 }
 ```
 
-> **重难点：**`SqlSessionFactoryBean` 负责创建 `SqlSessionFactory`，`MapperScannerConfigurer` 负责扫描 Dao 接口并创建 Mapper 代理对象。前者服务于会话工厂，后者服务于 Mapper 注入，不要混成一个概念。
+> **重难点：**`SqlSessionFactoryBean` 是 MyBatis-Spring 提供的工厂 Bean，用来生成 `SqlSessionFactory`；`MapperScannerConfigurer` 用来扫描 Mapper 接口并创建代理对象。不要把二者和普通业务 Bean 混为一谈。
 
-整合 JUnit 后，测试类不用手动创建 Spring 容器：
+Spring 整合 JUnit 后，测试类可以直接从 Spring 容器中注入 Bean：
 
 ```java
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -496,37 +343,35 @@ public class AccountServiceTest {
 }
 ```
 
-如果加载 XML，则写成：
+#### 6. AOP：在不改原方法的前提下增强
+
+AOP 的一句话记忆：**把共性功能抽成通知，用切入点找到要增强的方法，再由切面描述“谁在何处增强谁”。**
+
+| 概念 | 含义 | 例子 |
+| --- | --- | --- |
+| 连接点 `JoinPoint` | 程序执行中的可增强位置 | SpringAOP 中通常是方法执行 |
+| 切入点 `Pointcut` | 匹配连接点的表达式 | `execution(* com.itheima.dao.*Dao.*(..))` |
+| 通知 `Advice` | 要增强的共性功能 | 记录日志、统计耗时、事务控制 |
+| 通知类 | 定义通知方法的类 | `MyAdvice` |
+| 切面 `Aspect` | 通知与切入点的绑定关系 | `@Before("pt()")` |
+| 目标对象 | 被增强的原对象 | `BookDaoImpl` |
+| 代理对象 | 容器中实际执行增强逻辑的对象 | JDK 或 CGLIB 动态代理 |
+
+入门案例：
 
 ```java
-@ContextConfiguration(locations = {"classpath:applicationContext.xml"})
-```
+@Component
+@Aspect
+public class MyAdvice {
+    @Pointcut("execution(void com.itheima.dao.BookDao.update())")
+    private void pt() {
+    }
 
-### 5. AOP：不改原代码做统一增强
-
-AOP 的一句话定义：**在不改变原始设计的基础上，对指定方法添加共性功能。**例如统计业务方法执行耗时、统一日志、参数清洗、权限校验、事务管理。
-
-![AOP 概念示意](../../../public/blog/SSM/spring_day03/assets/1630144353462.png)
-
-核心概念按“谁、在哪、做什么、怎么绑定”来记：
-
-| 概念 | 含义 | 记忆 |
-| --- | --- | --- |
-| `JoinPoint` 连接点 | 程序执行过程中的位置，Spring AOP 中主要指方法执行 | 所有可被拦的方法 |
-| `Pointcut` 切入点 | 匹配连接点的表达式 | 真正要增强的方法 |
-| `Advice` 通知 | 在切入点执行的共性功能 | 增强代码 |
-| `Aspect` 切面 | 通知与切入点的对应关系 | 哪些方法加哪些增强 |
-| `Target` 目标对象 | 被代理的原始对象 | 原始 Bean |
-| `Proxy` 代理对象 | Spring 为目标对象创建的增强对象 | 容器中拿到的可能是它 |
-
-AOP 入门配置：
-
-```xml
-<dependency>
-    <groupId>org.aspectj</groupId>
-    <artifactId>aspectjweaver</artifactId>
-    <version>1.9.4</version>
-</dependency>
+    @Before("pt()")
+    public void method() {
+        System.out.println(System.currentTimeMillis());
+    }
+}
 ```
 
 ```java
@@ -537,205 +382,47 @@ public class SpringConfig {
 }
 ```
 
-```java
-@Component
-@Aspect
-public class MyAdvice {
-    @Pointcut("execution(void com.itheima.dao.BookDao.update())")
-    private void pt() {}
-
-    @Before("pt()")
-    public void method() {
-        System.out.println(System.currentTimeMillis());
-    }
-}
-```
-
-> **易忘：**`@Aspect` 只声明这是切面类，`@Component` 才让它进入 Spring 容器，`@EnableAspectJAutoProxy` 才开启注解式 AOP。三者缺一个，AOP 都可能不生效。
-
-#### AOP 工作流程
-
-Spring 容器启动时先加载 Bean 定义和切面配置；初始化 Bean 时判断其方法是否匹配切入点；如果匹配，容器中保存代理对象；如果不匹配，保存原始对象。调用 Bean 方法时，若拿到的是代理对象，就按通知类型执行增强和原始方法。
-
-![AOP 工作流程](../../../public/blog/SSM/spring_day03/assets/1630152538083.png)
-
-验证是否是代理对象，不要直接 `System.out.println(bookDao)`，因为可能走重写后的 `toString()`。应打印：
-
-```java
-System.out.println(bookDao.getClass());
-```
-
-#### 切入点表达式
-
-标准格式：
+切入点表达式按下面的结构记：
 
 ```text
-execution(访问修饰符 返回值 包名.类名/接口名.方法名(参数) 异常名)
+execution(访问修饰符 返回值 包名.类/接口名.方法名(参数) 异常名)
 ```
 
-示例：
+常用写法：
 
 ```java
-execution(public User com.itheima.service.UserService.findById(int))
-execution(* com.itheima.service.*Service.*(..))
+@Pointcut("execution(* com.itheima.service.*Service.*(..))")
+private void servicePt() {}
 ```
 
-常用通配符：
+通知类型：
 
-| 通配符 | 含义 | 示例 |
+| 注解 | 执行位置 | 常见用途 |
 | --- | --- | --- |
-| `*` | 单个任意符号 | 任意返回值、任意类名、任意方法名片段 |
-| `..` | 多个连续任意符号 | 任意层级包、任意参数 |
-| `+` | 匹配子类类型 | 使用率低 |
+| `@Before` | 原方法前 | 参数校验、日志 |
+| `@After` | 原方法后，无论是否异常 | 资源清理 |
+| `@Around` | 原方法前后包围 | 统计耗时、权限、事务 |
+| `@AfterReturning` | 原方法成功返回后 | 获取返回值 |
+| `@AfterThrowing` | 原方法抛异常后 | 记录异常 |
 
-书写技巧：
-
-- 通常描述接口，不描述实现类，减少耦合
-- 访问修饰符一般省略
-- 查询方法返回值常用 `*`，增删改可写精准返回值
-- 包名尽量少用大范围 `..`，避免匹配范围过大
-- 业务层常用 `execution(* com.itheima.service.*Service.*(..))`
-- 方法名保留动词，如 `getBy*`、`save*`、`update*`
-
-> **易错：**`execution(* *..*(..))` 可以匹配项目中任意包任意类的任意方法，范围过大，不建议在真实项目中随手使用。
-
-#### 五种通知类型
-
-| 通知 | 注解 | 执行时机 | 复习重点 |
-| --- | --- | --- | --- |
-| 前置通知 | `@Before` | 原始方法前 | 不能控制原始方法是否执行 |
-| 后置通知 | `@After` | 原始方法后 | 无论是否异常都可能执行 |
-| 环绕通知 | `@Around` | 原始方法前后 | 最重要，可控制调用、参数、返回值、异常 |
-| 返回后通知 | `@AfterReturning` | 正常返回后 | 可拿返回值 |
-| 异常后通知 | `@AfterThrowing` | 抛异常后 | 可拿异常 |
-
-环绕通知最容易出错，标准写法如下：
+环绕通知最容易写错：
 
 ```java
 @Around("servicePt()")
-public Object runSpeed(ProceedingJoinPoint pjp) throws Throwable {
+public Object around(ProceedingJoinPoint pjp) throws Throwable {
     long start = System.currentTimeMillis();
-
     Object ret = pjp.proceed();
-
     long end = System.currentTimeMillis();
-    System.out.println("执行时间: " + (end - start) + "ms");
+    System.out.println(pjp.getSignature() + " cost " + (end - start) + "ms");
     return ret;
 }
 ```
 
-> **重难点：**环绕通知如果不调用 `pjp.proceed()`，原始方法就不会执行。如果原始方法有返回值，环绕通知也要返回对应值，通常写 `Object` 最稳。
+> **易错点：**环绕通知必须调用 `pjp.proceed()`，否则原方法不会执行；原方法有返回值时，环绕通知也必须把返回值 `return` 出去。
 
-统计业务层方法万次执行耗时：
+#### 7. 声明式事务：AOP 在业务层保证一致性
 
-```java
-@Component
-@Aspect
-public class ProjectAdvice {
-    @Pointcut("execution(* com.itheima.service.*Service.*(..))")
-    private void servicePt() {}
-
-    @Around("servicePt()")
-    public Object runSpeed(ProceedingJoinPoint pjp) throws Throwable {
-        Signature signature = pjp.getSignature();
-        String className = signature.getDeclaringTypeName();
-        String methodName = signature.getName();
-
-        long start = System.currentTimeMillis();
-        Object ret = null;
-        for (int i = 0; i < 10000; i++) {
-            ret = pjp.proceed();
-        }
-        long end = System.currentTimeMillis();
-
-        System.out.println("万次执行: " + className + "." + methodName + " -> " + (end - start) + "ms");
-        return ret;
-    }
-}
-```
-
-#### 通知获取参数、返回值、异常
-
-非环绕通知用 `JoinPoint` 获取参数：
-
-```java
-@Before("pt()")
-public void before(JoinPoint jp) {
-    Object[] args = jp.getArgs();
-    System.out.println(Arrays.toString(args));
-}
-```
-
-环绕通知用 `ProceedingJoinPoint` 获取并可修改参数：
-
-```java
-@Around("pt()")
-public Object around(ProceedingJoinPoint pjp) throws Throwable {
-    Object[] args = pjp.getArgs();
-    args[0] = 666;
-    return pjp.proceed(args);
-}
-```
-
-返回后通知获取返回值：
-
-```java
-@AfterReturning(value = "pt()", returning = "ret")
-public void afterReturning(Object ret) {
-    System.out.println("返回值: " + ret);
-}
-```
-
-异常后通知获取异常：
-
-```java
-@AfterThrowing(value = "pt()", throwing = "t")
-public void afterThrowing(Throwable t) {
-    System.out.println("异常: " + t);
-}
-```
-
-提示性案例：百度网盘提取码多空格兼容。需求是在业务方法执行前，对所有字符串参数做 `trim()`，再调用原始方法，因此必须用环绕通知。
-
-```java
-@Component
-@Aspect
-public class DataAdvice {
-    @Pointcut("execution(boolean com.itheima.service.*Service.*(*,*))")
-    private void servicePt() {}
-
-    @Around("servicePt()")
-    public Object trimStr(ProceedingJoinPoint pjp) throws Throwable {
-        Object[] args = pjp.getArgs();
-        for (int i = 0; i < args.length; i++) {
-            if (args[i] != null && args[i].getClass().equals(String.class)) {
-                args[i] = args[i].toString().trim();
-            }
-        }
-        return pjp.proceed(args);
-    }
-}
-```
-
-> **易错：**如果处理参数后仍调用 `pjp.proceed()`，原方法拿到的还是原参数。必须调用 `pjp.proceed(args)` 才能把修改后的参数传进去。
-
-### 6. 声明式事务：业务整体同成功同失败
-
-事务的作用是在一组数据库操作中保证一致性。数据层单个方法自带事务还不够，因为转账业务包含“转出账户扣钱”和“转入账户加钱”两个 Dao 操作。若事务只在 Dao 层，各操作各自提交，中间异常会导致一个成功、一个失败。因此事务应加在 **业务层方法** 上。
-
-转账 Dao：
-
-```java
-public interface AccountDao {
-    @Update("update tbl_account set money = money + #{money} where name = #{name}")
-    void inMoney(@Param("name") String name, @Param("money") Double money);
-
-    @Update("update tbl_account set money = money - #{money} where name = #{name}")
-    void outMoney(@Param("name") String name, @Param("money") Double money);
-}
-```
-
-业务方法：
+转账案例是事务的最佳记忆锚点：出账成功后如果入账前异常，钱会“少一半”。事务要保证两个数据库操作同成功、同失败。
 
 ```java
 @Service
@@ -758,14 +445,14 @@ public class AccountServiceImpl implements AccountService {
 public class JdbcConfig {
     @Bean
     public PlatformTransactionManager transactionManager(DataSource dataSource) {
-        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager();
-        transactionManager.setDataSource(dataSource);
-        return transactionManager;
+        DataSourceTransactionManager tm = new DataSourceTransactionManager();
+        tm.setDataSource(dataSource);
+        return tm;
     }
 }
 ```
 
-开启注解式事务：
+开启注解事务：
 
 ```java
 @Configuration
@@ -777,51 +464,20 @@ public class SpringConfig {
 }
 ```
 
-> **重难点：**MyBatis 底层使用 JDBC 事务，所以这里选 `DataSourceTransactionManager`。事务管理器和 `SqlSessionFactoryBean` 必须使用同一个 `DataSource`，否则事务无法正确协调同一批数据库操作。
+事务常用属性：
 
-`@Transactional` 可以写在接口、接口方法、实现类、实现类方法上。课程建议写在实现类或实现类方法上。方法上的配置粒度更细，类上的配置适合该类所有方法都需要事务。
-
-#### 事务角色
-
-| 角色 | 含义 | 例子 |
+| 属性 | 作用 | 复习提示 |
 | --- | --- | --- |
-| 事务管理员 | 发起事务的一方 | `AccountService.transfer()` |
-| 事务协调员 | 加入事务的一方 | `outMoney()`、`inMoney()`、其他被调用业务方法 |
-
-未开启 Spring 事务时，两个 Dao 修改方法可能分别提交。开启后，业务层的 `transfer()` 携带一个大事务，Dao 操作加入该事务，中间异常则整体回滚。
-
-![事务角色示意](../../../public/blog/SSM/spring_day03/assets/1630249111055.png)
-
-#### 事务属性
-
-常见属性都配置在 `@Transactional(...)` 中：
-
-| 属性 | 含义 | 记忆点 |
-| --- | --- | --- |
-| `readOnly` | 只读事务 | 查询可设 `true`，增删改必须 `false` |
-| `timeout` | 超时时间，单位秒 | `-1` 表示不设置 |
-| `rollbackFor` | 指定哪些异常回滚 | 检查异常常用 |
-| `noRollbackFor` | 指定哪些异常不回滚 | 特殊业务才用 |
+| `readOnly` | 只读事务 | 查询设为 `true`，增删改设为 `false` |
+| `timeout` | 超时时间 | 单位秒，超时回滚 |
+| `rollbackFor` | 指定哪些异常回滚 | 受检异常常用 |
+| `noRollbackFor` | 指定哪些异常不回滚 | 特殊业务场景 |
 | `isolation` | 隔离级别 | 默认跟随数据库 |
-| `propagation` | 传播行为 | 多事务协作重点 |
+| `propagation` | 传播行为 | 方法互相调用时如何处理事务 |
 
-默认情况下，Spring 只对 `RuntimeException`、`Error` 及其子类回滚。`IOException` 这类检查异常默认不回滚，需要显式指定：
+> **重难点：**Spring 事务默认只对 `RuntimeException`、`Error` 及其子类回滚。`IOException` 这类受检异常默认不回滚，需要写 `@Transactional(rollbackFor = IOException.class)`。
 
-```java
-@Transactional(rollbackFor = IOException.class)
-public void transfer(String out, String in, Double money) throws IOException {
-    accountDao.outMoney(out, money);
-    throw new IOException();
-}
-```
-
-> **易错：**“抛异常就一定回滚”是错的。默认只回滚运行时异常和 Error。检查异常要用 `rollbackFor`。
-
-#### 事务传播行为
-
-传播行为描述的是：事务协调员如何处理事务管理员携带来的事务。默认是 `REQUIRED`，表示当前有事务就加入，没有事务就新建。
-
-转账追加日志案例要求：**转账成功或失败都要记录日志**。如果日志方法使用默认 `REQUIRED`，它会加入转账事务，转账失败时日志也回滚。解决方式是让日志方法开启独立新事务：
+日志场景常考传播行为：转账失败也要记录日志，此时日志不能加入转账的大事务，应新开事务。
 
 ```java
 @Service
@@ -831,84 +487,56 @@ public class LogServiceImpl implements LogService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(String out, String in, Double money) {
-        logDao.log("转账操作由" + out + "到" + in + ", 金额: " + money);
+        logDao.log("transfer from " + out + " to " + in + ", money=" + money);
     }
 }
 ```
 
-转账业务中用 `finally` 保证日志调用：
+> **易忘点：**`REQUIRED` 是默认值，有事务就加入，没有就新建；`REQUIRES_NEW` 总是新建事务，适合“主业务失败但日志仍要保存”的场景。
 
-```java
-@Transactional
-public void transfer(String out, String in, Double money) {
-    try {
-        accountDao.outMoney(out, money);
-        int i = 1 / 0;
-        accountDao.inMoney(in, money);
-    } finally {
-        logService.log(out, in, money);
-    }
-}
+### 二、SpringMVC：让 HTTP 请求变成可维护的接口
+
+#### SpringMVC 记忆导图（Mermaid）
+
+```mermaid
+flowchart TB
+    M["SpringMVC：Web层框架，对Servlet封装"]:::root
+    M --> Entry["入口：DispatcherServlet接管请求"]:::node
+    Entry --> Init["Web初始化：AbstractAnnotationConfigDispatcherServletInitializer"]:::node
+    Init --> Split["容器分工：Spring管Service/Dao，SpringMVC管Controller"]:::warn
+    Entry --> Controller["Controller：@Controller/@RestController + @RequestMapping"]:::node
+    Controller --> Param["请求参数：普通、POJO、嵌套、数组、集合、JSON、日期"]:::node
+    Param --> Annotation["@RequestParam vs @RequestBody vs @PathVariable"]:::warn
+    Controller --> Response["响应：页面/文本/JSON，常用JSON"]:::node
+    Response --> REST["REST：资源路径 + GET/POST/PUT/DELETE"]:::node
+    REST --> Protocol["统一协议：Result(code,data,msg)"]:::node
+    Protocol --> Exception["统一异常：@RestControllerAdvice + @ExceptionHandler"]:::node
+    Exception --> Interceptor["拦截器：Controller前后增强，可放行或拦截"]:::node
+
+    classDef root fill:#1565C0,stroke:#0D47A1,color:#fff,stroke-width:2px;
+    classDef node fill:#E3F2FD,stroke:#42A5F5,color:#0D47A1;
+    classDef warn fill:#FFF8E1,stroke:#F9A825,color:#5D4037;
 ```
 
-> **重难点：**`REQUIRES_NEW` 会开启一个新事务，并与当前事务隔离。转账事务回滚，不影响日志事务提交。这是“主业务失败但审计日志保留”的典型场景。
+SpringMVC 属于 Web 层，核心职责是：**接收请求、绑定参数、调用业务层、转换响应数据。**它把原来分散在 Servlet 中的路径映射、参数获取、JSON 输出统一到 Controller 方法上。
 
-#### Spring 尾部复盘导图
+#### 1. 入门结构：让 DispatcherServlet 接管请求
 
-![spring-e.svg](../../../public/blog/SSM/spring-e.svg)
-
-### 7. SpringMVC 学习主线
-
-#### SpringMVC 首部记忆导图（Mermaid）
-
-![springmvc-s.svg](../../../public/blog/SSM/springmvc-s.svg)
-
-
-SpringMVC 是 Spring Framework 体系里的 **Web 表现层框架**，本质上是对 Servlet 开发的封装。复习它不要从注解开始背，而要先记住一条请求链：
-
-> **浏览器发送请求 -> Tomcat 接收 -> DispatcherServlet 统一分发 -> Controller 方法处理 -> 参数绑定/业务调用 -> 消息转换器把结果写回响应体。**
-
-传统 Servlet 开发的问题是：每个 Servlet 往往对应一类请求，路径映射、参数获取、响应输出都要自己写，Web 层代码容易又散又重复。SpringMVC 把这些重复工作抽出来，让开发者主要关注 `Controller` 方法。
-
-| 学习块 | 解决的问题 | 关键记忆点 |
-| --- | --- | --- |
-| 入门配置 | SpringMVC 如何接管 Web 请求 | `DispatcherServlet` 是统一入口 |
-| Bean 加载控制 | Spring 和 SpringMVC 谁管哪些 Bean | MVC 容器管 Controller，Spring 容器管 Service/Dao/事务 |
-| 请求参数 | 前端数据如何进入 Java 方法 | 普通参数、POJO、数组、集合、JSON、路径变量 |
-| 响应结果 | Java 返回值如何变成响应内容 | `@ResponseBody` + Jackson + `@EnableWebMvc` |
-| REST 风格 | 用统一 URL 表示资源操作 | 资源名用名词，动作交给 HTTP 方法 |
-| SSM 整合 | SpringMVC + Spring + MyBatis 协同 | Web 入口加载两个容器配置 |
-| 统一结果/异常 | 前后端通信协议稳定 | `Result`、`Code`、`@RestControllerAdvice` |
-| 拦截器 | Controller 前后做统一增强 | `preHandle` 控制是否放行 |
-
-> **重难点：**SpringMVC 和 Spring 不是两套互不相干的框架。SpringMVC 负责“请求进来怎么找 Controller、数据怎么收发”；Spring 负责“业务对象、数据源、Mapper、事务怎么管理”。SSM 整合时，二者通过父子容器协作。
-
-### 8. SpringMVC 入门：让 DispatcherServlet 接管请求
-
-SpringMVC 入门案例可以按 Servlet 的替代路线记：以前写 `Servlet + web.xml`，现在写 `Controller + SpringMVC 配置类 + Web 容器初始化类`。
-
-Maven Web 工程的关键依赖：
+SpringMVC 的最小配置由三部分组成：依赖、SpringMVC 配置类、Web 容器初始化类。
 
 ```xml
-<dependencies>
-    <dependency>
-        <groupId>javax.servlet</groupId>
-        <artifactId>javax.servlet-api</artifactId>
-        <version>3.1.0</version>
-        <scope>provided</scope>
-    </dependency>
-
-    <dependency>
-        <groupId>org.springframework</groupId>
-        <artifactId>spring-webmvc</artifactId>
-        <version>5.2.10.RELEASE</version>
-    </dependency>
-</dependencies>
+<dependency>
+    <groupId>javax.servlet</groupId>
+    <artifactId>javax.servlet-api</artifactId>
+    <version>3.1.0</version>
+    <scope>provided</scope>
+</dependency>
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-webmvc</artifactId>
+    <version>5.2.10.RELEASE</version>
+</dependency>
 ```
-
-> **易错：**`servlet-api` 必须用 `provided`。Tomcat 运行时已经提供 Servlet API，如果项目再把它打进运行环境，容易和 Tomcat 自带 jar 冲突。
-
-SpringMVC 配置类只扫描表现层：
 
 ```java
 @Configuration
@@ -917,7 +545,25 @@ public class SpringMvcConfig {
 }
 ```
 
-控制器方法：
+```java
+public class ServletContainersInitConfig extends AbstractDispatcherServletInitializer {
+    protected WebApplicationContext createServletApplicationContext() {
+        AnnotationConfigWebApplicationContext ctx = new AnnotationConfigWebApplicationContext();
+        ctx.register(SpringMvcConfig.class);
+        return ctx;
+    }
+
+    protected String[] getServletMappings() {
+        return new String[]{"/"};
+    }
+
+    protected WebApplicationContext createRootApplicationContext() {
+        return null;
+    }
+}
+```
+
+Controller：
 
 ```java
 @Controller
@@ -931,56 +577,36 @@ public class UserController {
 }
 ```
 
-Web 容器初始化类用于替代 `web.xml`：
+> **易错点：**如果方法直接返回字符串但没有 `@ResponseBody`，SpringMVC 会把字符串当作页面名去找视图，找不到就 404。要返回文本或 JSON，必须加 `@ResponseBody`，或直接使用 `@RestController`。
+
+请求执行流程：
+
+1. 浏览器发送请求。
+2. Web 容器发现请求匹配 SpringMVC 映射规则 `/`。
+3. 请求交给 DispatcherServlet。
+4. DispatcherServlet 根据路径找到 Controller 方法。
+5. 执行方法。
+6. 若有 `@ResponseBody`，直接把返回值写入响应体。
+
+#### 2. Spring 与 SpringMVC 的容器分工
+
+SSM 项目中通常有两个容器：
+
+| 容器 | 管理内容 | 配置类 |
+| --- | --- | --- |
+| Spring 根容器 | Service、Dao、DataSource、事务、MyBatis | `SpringConfig` |
+| SpringMVC 子容器 | Controller、WebMVC 配置、拦截器 | `SpringMvcConfig` |
+
+> **重难点：**不要让 Spring 的包扫描把 Controller 也扫进去。Controller 应由 SpringMVC 容器管理，Service/Dao 应由 Spring 根容器管理。否则职责混乱，后期整合和拦截器配置都容易出问题。
+
+可以用精准包扫描：
 
 ```java
-public class ServletContainersInitConfig extends AbstractDispatcherServletInitializer {
-    @Override
-    protected WebApplicationContext createServletApplicationContext() {
-        AnnotationConfigWebApplicationContext ctx =
-                new AnnotationConfigWebApplicationContext();
-        ctx.register(SpringMvcConfig.class);
-        return ctx;
-    }
-
-    @Override
-    protected String[] getServletMappings() {
-        return new String[]{"/"};
-    }
-
-    @Override
-    protected WebApplicationContext createRootApplicationContext() {
-        return null;
-    }
+@Configuration
+@ComponentScan("com.itheima.service")
+public class SpringConfig {
 }
 ```
-
-这段配置的含义要拆开记：
-
-- `createServletApplicationContext()`：创建 SpringMVC 容器，加载 Controller 等表现层 Bean。
-- `getServletMappings()`：设置 SpringMVC 拦截哪些请求，`/` 表示除 JSP 外几乎都交给 SpringMVC。
-- `createRootApplicationContext()`：创建 Spring 根容器，SSM 整合时用来加载 Spring、Service、Dao、事务等配置。
-
-> **易错：**Controller 方法如果直接返回 `String`，默认会被当作“视图名称”解析。想把字符串本身写回浏览器，必须加 `@ResponseBody`，或者在类上用 `@RestController`。
-
-SpringMVC 单次请求流程：
-
-1. 浏览器请求 `/save`。
-2. Tomcat 根据 Servlet 映射规则，把请求交给 SpringMVC 的 `DispatcherServlet`。
-3. SpringMVC 查找 `/save` 对应的 Controller 方法。
-4. 执行 `save()`。
-5. 发现 `@ResponseBody`，不走页面解析，直接把返回值写入响应体。
-
-### 9. Spring 与 SpringMVC 的 Bean 加载边界
-
-SSM 项目里通常同时存在 `SpringConfig` 和 `SpringMvcConfig`。这不是重复配置，而是职责分离：
-
-| 容器 | 应加载的 Bean | 不建议加载的 Bean |
-| --- | --- | --- |
-| SpringMVC 容器 | `Controller`、MVC 配置、拦截器、静态资源映射 | Service、Dao、DataSource、事务 |
-| Spring 根容器 | `Service`、Dao/Mapper、DataSource、MyBatis、事务管理器 | Controller |
-
-推荐写法是精准扫描：
 
 ```java
 @Configuration
@@ -990,103 +616,31 @@ public class SpringMvcConfig {
 }
 ```
 
-```java
-@Configuration
-@ComponentScan("com.itheima.service")
-@PropertySource("classpath:jdbc.properties")
-@Import({JdbcConfig.class, MyBatisConfig.class})
-@EnableTransactionManagement
-public class SpringConfig {
-}
-```
+#### 3. 请求参数绑定：先分清参数来自哪里
 
-如果 Spring 根容器扫描范围写成 `com.itheima`，就可能把 `Controller` 也扫进去。可用排除过滤：
-
-```java
-@Configuration
-@ComponentScan(
-    value = "com.itheima",
-    excludeFilters = @ComponentScan.Filter(
-        type = FilterType.ANNOTATION,
-        classes = Controller.class
-    )
-)
-public class SpringConfig {
-}
-```
-
-> **重难点：**Controller 最好只在 SpringMVC 容器中。表现层 Bean 被 Spring 根容器提前扫描进去，轻则结构混乱，重则 MVC 特性、拦截器、异常处理等协作关系不清晰。
-
-### 10. 请求映射与参数绑定
-
-`@RequestMapping` 可以写在类上和方法上。类上路径负责抽公共前缀，方法上路径负责具体动作：
-
-```java
-@Controller
-@RequestMapping("/user")
-public class UserController {
-    @RequestMapping("/save")
-    @ResponseBody
-    public String save() {
-        return "{'module':'user save'}";
-    }
-}
-```
-
-最终访问路径是 `/user/save`。
-
-#### 普通参数
-
-请求地址：
-
-```text
-GET /commonParam?name=itheima&age=15
-```
-
-后端接收：
+普通参数可以按形参名自动绑定：
 
 ```java
 @RequestMapping("/commonParam")
 @ResponseBody
 public String commonParam(String name, int age) {
-    System.out.println("name = " + name + ", age = " + age);
+    System.out.println(name + "," + age);
     return "{'module':'common param'}";
 }
 ```
 
-如果请求参数名和方法形参名不一致，用 `@RequestParam` 指定：
+参数名不一致时用 `@RequestParam`：
 
 ```java
 @RequestMapping("/commonParamDifferentName")
 @ResponseBody
-public String commonParamDifferentName(@RequestParam("name") String userName, int age) {
-    System.out.println("userName = " + userName + ", age = " + age);
+public String commonParamDifferentName(@RequestParam("name") String userName) {
+    System.out.println(userName);
     return "{'module':'common param different name'}";
 }
 ```
 
-> **易错：**`@RequestParam` 用于 URL 参数或表单参数，不用于接收 JSON 请求体。JSON 请求体要用 `@RequestBody`。
-
-#### POJO 与嵌套 POJO
-
-只要请求参数名和对象属性名一致，SpringMVC 会自动封装：
-
-```java
-public class User {
-    private String name;
-    private Integer age;
-    private Address address;
-    // getter/setter
-}
-```
-
-请求地址：
-
-```text
-GET /pojoParam?name=itheima&age=15&address.province=beijing&address.city=beijing
-```
-
-Controller：
+POJO 参数按属性名绑定：
 
 ```java
 @RequestMapping("/pojoParam")
@@ -1097,43 +651,7 @@ public String pojoParam(User user) {
 }
 ```
 
-#### 数组与集合
-
-数组适合接收同名多值参数：
-
-```text
-GET /arrayParam?likes=game&likes=music&likes=travel
-```
-
-```java
-@RequestMapping("/arrayParam")
-@ResponseBody
-public String arrayParam(String[] likes) {
-    System.out.println(Arrays.toString(likes));
-    return "{'module':'array param'}";
-}
-```
-
-集合接收同名参数时需要 `@RequestParam`：
-
-```java
-@RequestMapping("/listParam")
-@ResponseBody
-public String listParam(@RequestParam List<String> likes) {
-    System.out.println(likes);
-    return "{'module':'list param'}";
-}
-```
-
-> **易错：**普通集合参数如果不加 `@RequestParam`，SpringMVC 容易按复杂对象处理，导致绑定失败。简单集合接收 URL/form 参数时记得加。
-
-#### JSON 参数
-
-接收 JSON 需要三件事：
-
-1. 导入 Jackson 依赖。
-2. SpringMVC 配置类加 `@EnableWebMvc`，开启 MVC 注解支持与消息转换。
-3. Controller 形参加 `@RequestBody`。
+JSON 参数必须引入 Jackson，开启 MVC 注解支持，并使用 `@RequestBody`：
 
 ```xml
 <dependency>
@@ -1151,129 +669,81 @@ public class SpringMvcConfig {
 }
 ```
 
-JSON 对象：
-
-```json
-{
-  "name": "itheima",
-  "age": 15
+```java
+@RequestMapping("/listParamForJson")
+@ResponseBody
+public String listParamForJson(@RequestBody List<String> likes) {
+    System.out.println(likes);
+    return "{'module':'list common for json param'}";
 }
 ```
 
-```java
-@RequestMapping("/jsonPojoParam")
-@ResponseBody
-public String jsonPojoParam(@RequestBody User user) {
-    System.out.println(user);
-    return "{'module':'json pojo param'}";
-}
-```
-
-JSON 对象数组：
-
-```json
-[
-  {"name": "itheima", "age": 15},
-  {"name": "itcast", "age": 16}
-]
-```
+日期参数用 `@DateTimeFormat`：
 
 ```java
-@RequestMapping("/jsonListParam")
+@RequestMapping("/dataParam")
 @ResponseBody
-public String jsonListParam(@RequestBody List<User> users) {
-    System.out.println(users);
-    return "{'module':'json list param'}";
-}
-```
-
-#### 日期参数
-
-默认日期格式通常能接收 `yyyy/MM/dd`，如果前端传 `yyyy-MM-dd` 或带时分秒，需要显式声明格式：
-
-```java
-@RequestMapping("/dateParam")
-@ResponseBody
-public String dateParam(
-        Date date,
-        @DateTimeFormat(pattern = "yyyy-MM-dd") Date date1,
-        @DateTimeFormat(pattern = "yyyy/MM/dd HH:mm:ss") Date date2) {
+public String dataParam(@DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date date) {
     System.out.println(date);
-    System.out.println(date1);
-    System.out.println(date2);
-    return "{'module':'date param'}";
+    return "{'module':'data param'}";
 }
 ```
 
-> **易忘：**`@DateTimeFormat` 处理的是请求参数到 Java 日期对象的转换；JSON 日期格式转换属于消息转换器/Jackson 的范畴，不能混为一谈。
+三类常用参数注解对比：
 
-### 11. 响应数据：从返回页面到返回 JSON
+| 注解 | 接收位置 | 常见场景 |
+| --- | --- | --- |
+| `@RequestParam` | URL 参数、表单参数 | 非 JSON，参数名不一致或需要明确指定 |
+| `@RequestBody` | 请求体 JSON | 新增、修改时提交复杂对象 |
+| `@PathVariable` | REST 路径变量 | `/books/{id}` 中的 id |
 
-早期 MVC 会返回页面视图，现在前后端分离更常见，SpringMVC 主要返回 JSON。
+> **易忘点：**`@RequestBody` 一个方法中通常只用一次，因为请求体只能被完整读取一次；多个简单参数优先用 URL 参数或包装成一个对象。
 
-返回页面：
+#### 4. 响应数据与静态资源
 
-```java
-@RequestMapping("/toJumpPage")
-public String toJumpPage() {
-    return "page.jsp";
-}
-```
-
-返回文本：
+返回对象或集合时，SpringMVC 会借助 Jackson 转成 JSON：
 
 ```java
-@RequestMapping("/toText")
+@RequestMapping("/toJsonPOJO")
 @ResponseBody
-public String toText() {
-    return "response text";
-}
-```
-
-返回对象或集合时，SpringMVC 会借助 Jackson 把对象转换成 JSON：
-
-```java
-@RequestMapping("/toJsonPojo")
-@ResponseBody
-public User toJsonPojo() {
+public User toJsonPOJO() {
     User user = new User();
-    user.setName("itheima");
+    user.setName("itcast");
     user.setAge(15);
     return user;
 }
 ```
 
+SpringMVC 拦截路径设置为 `/` 后，静态资源也可能被拦截。可以配置资源放行：
+
 ```java
-@RequestMapping("/toJsonList")
-@ResponseBody
-public List<User> toJsonList() {
-    User user1 = new User();
-    user1.setName("itheima");
-    user1.setAge(15);
-
-    User user2 = new User();
-    user2.setName("itcast");
-    user2.setAge(16);
-
-    return Arrays.asList(user1, user2);
+@Configuration
+public class SpringMvcSupport extends WebMvcConfigurationSupport {
+    @Override
+    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/pages/**").addResourceLocations("/pages/");
+        registry.addResourceHandler("/js/**").addResourceLocations("/js/");
+        registry.addResourceHandler("/css/**").addResourceLocations("/css/");
+        registry.addResourceHandler("/plugins/**").addResourceLocations("/plugins/");
+    }
 }
 ```
 
-> **重难点：**`@ResponseBody` 不是“返回 JSON”的专用注解，它的核心语义是“把返回值写入响应体，不走视图解析”。返回对象能变成 JSON，是因为消息转换器和 Jackson 参与了转换。
+> **易错点：**配置类本身也要被 SpringMVC 扫描到，否则资源放行规则不会生效。
 
-### 12. REST 风格：用资源路径统一增删改查
+#### 5. REST：资源路径统一，动作交给 HTTP 方法
 
-REST 是一种软件架构风格。它强调用 URL 表示资源，用 HTTP 请求方式表示动作：
+REST 风格把路径从“动词路径”改为“资源路径”：
 
-| 操作 | 传统路径 | REST 路径 | HTTP 方法 |
-| --- | --- | --- | --- |
-| 新增 | `/saveUser` | `/users` | `POST` |
-| 删除 | `/deleteUser?id=1` | `/users/1` | `DELETE` |
-| 修改 | `/updateUser` | `/users` | `PUT` |
-| 根据 ID 查询 | `/getUserById?id=1` | `/users/1` | `GET` |
-| 查询全部 | `/getAllUsers` | `/users` | `GET` |
+| 操作 | 传统路径 | REST 路径与方法 |
+| --- | --- | --- |
+| 新增 | `/save` | `POST /books` |
+| 删除 | `/delete?id=1` | `DELETE /books/1` |
+| 修改 | `/update` | `PUT /books` |
+| 查询单个 | `/getById?id=1` | `GET /books/1` |
+| 查询全部 | `/findAll` | `GET /books` |
 
-完整 Controller 写法：
+快速开发写法：
 
 ```java
 @RestController
@@ -1311,113 +781,22 @@ public class BookController {
 }
 ```
 
-`@RestController` 等价于 `@Controller + @ResponseBody`，适合整个类都返回响应体的 REST 接口。
+> **重难点：**`@RestController = @Controller + @ResponseBody`。类上的 `@RequestMapping("/books")` 提取公共资源路径，方法上的 `@GetMapping`、`@PostMapping` 等表达动作。
 
-`@GetMapping`、`@PostMapping`、`@PutMapping`、`@DeleteMapping` 是 `@RequestMapping(method = ...)` 的快捷写法。
+#### 6. SSM 整合：配置分层要稳
 
-`@PathVariable` 用于接收路径变量：
+SSM 整合的配置顺序可以按下面记：
 
-```java
-@DeleteMapping("/{id}")
-public String delete(@PathVariable Integer id) {
-    return "{'module':'book delete'}";
-}
-```
+1. Web 入口加载 Spring 与 SpringMVC 两类配置。
+2. Spring 管 Service、事务、数据源、MyBatis。
+3. SpringMVC 管 Controller、JSON 转换、拦截器。
+4. Dao 由 MyBatis-Spring 扫描成代理对象。
 
-如果路径变量名和形参名不一致，需要显式指定：
-
-```java
-@DeleteMapping("/{bookId}")
-public String delete(@PathVariable("bookId") Integer id) {
-    return "{'module':'book delete'}";
-}
-```
-
-三种常见参数注解对比：
-
-| 注解 | 数据来源 | 典型场景 |
-| --- | --- | --- |
-| `@RequestParam` | URL 参数、表单参数 | `?name=tom`、普通集合 |
-| `@RequestBody` | JSON 请求体 | 新增、修改时提交对象 |
-| `@PathVariable` | REST 路径变量 | `/books/1` 中的 `1` |
-
-> **易错：**REST 中路径写资源名，不写动词。`POST /books` 已经表达“新增图书”，不要写成 `POST /books/save`。
-
-### 13. 静态资源放行
-
-当 `DispatcherServlet` 映射为 `/` 时，SpringMVC 会尝试处理很多请求，包括 `/pages/books.html`、`/js/vue.js` 等静态资源。如果没有对应 Controller，就会 404。
-
-解决方式是配置静态资源处理器：
+Spring 配置：
 
 ```java
 @Configuration
-public class SpringMvcSupport extends WebMvcConfigurationSupport {
-    @Override
-    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/pages/**").addResourceLocations("/pages/");
-        registry.addResourceHandler("/js/**").addResourceLocations("/js/");
-        registry.addResourceHandler("/css/**").addResourceLocations("/css/");
-        registry.addResourceHandler("/plugins/**").addResourceLocations("/plugins/");
-    }
-}
-```
-
-并保证该配置类能被 SpringMVC 扫描：
-
-```java
-@Configuration
-@ComponentScan({"com.itheima.controller", "com.itheima.config"})
-@EnableWebMvc
-public class SpringMvcConfig {
-}
-```
-
-> **易忘：**静态资源放行配置属于 SpringMVC 容器，不是 Spring 根容器。写了配置类但没被 `SpringMvcConfig` 扫描到，等于没写。
-
-### 14. SSM 整合：两套配置，一个 Web 入口
-
-SSM 整合的核心是让三层各归其位：
-
-- `Controller`：由 SpringMVC 扫描，负责请求、参数、响应。
-- `Service`：由 Spring 扫描，负责业务与事务。
-- `Dao/Mapper`：由 MyBatis-Spring 扫描代理，交给 Spring 注入。
-- `DataSource`、`SqlSessionFactoryBean`、`PlatformTransactionManager`：由 Spring 配置类创建。
-
-#### Web 入口配置
-
-```java
-public class ServletConfig extends AbstractAnnotationConfigDispatcherServletInitializer {
-    @Override
-    protected Class<?>[] getRootConfigClasses() {
-        return new Class[]{SpringConfig.class};
-    }
-
-    @Override
-    protected Class<?>[] getServletConfigClasses() {
-        return new Class[]{SpringMvcConfig.class};
-    }
-
-    @Override
-    protected String[] getServletMappings() {
-        return new String[]{"/"};
-    }
-
-    @Override
-    protected Filter[] getServletFilters() {
-        CharacterEncodingFilter filter = new CharacterEncodingFilter();
-        filter.setEncoding("utf-8");
-        return new Filter[]{filter};
-    }
-}
-```
-
-> **重难点：**`getRootConfigClasses()` 加载 Spring 根容器，`getServletConfigClasses()` 加载 SpringMVC 容器。SSM 整合时不要再返回空数组，否则 Service、Dao、事务等都不会进入 Spring 根容器。
-
-#### Spring 配置
-
-```java
-@Configuration
-@ComponentScan("com.itheima.service")
+@ComponentScan({"com.itheima.service"})
 @PropertySource("classpath:jdbc.properties")
 @Import({JdbcConfig.class, MyBatisConfig.class})
 @EnableTransactionManagement
@@ -1425,7 +804,7 @@ public class SpringConfig {
 }
 ```
 
-#### JDBC 配置
+JDBC 配置：
 
 ```java
 public class JdbcConfig {
@@ -1457,14 +836,7 @@ public class JdbcConfig {
 }
 ```
 
-```properties
-jdbc.driver=com.mysql.jdbc.Driver
-jdbc.url=jdbc:mysql://localhost:3306/ssm_db
-jdbc.username=root
-jdbc.password=root
-```
-
-#### MyBatis 配置
+MyBatis 配置：
 
 ```java
 public class MyBatisConfig {
@@ -1485,7 +857,7 @@ public class MyBatisConfig {
 }
 ```
 
-#### SpringMVC 配置
+SpringMVC 配置：
 
 ```java
 @Configuration
@@ -1495,180 +867,42 @@ public class SpringMvcConfig {
 }
 ```
 
-#### 图书模块 CRUD
-
-数据库表：
-
-```sql
-create database ssm_db character set utf8;
-use ssm_db;
-
-create table tbl_book(
-    id int primary key auto_increment,
-    type varchar(20),
-    name varchar(50),
-    description varchar(255)
-);
-```
-
-实体类：
+Web 入口：
 
 ```java
-public class Book {
-    private Integer id;
-    private String type;
-    private String name;
-    private String description;
-    // getter/setter/toString
-}
-```
-
-Dao 接口：
-
-```java
-public interface BookDao {
-    @Insert("insert into tbl_book(type, name, description) values(#{type}, #{name}, #{description})")
-    void save(Book book);
-
-    @Update("update tbl_book set type = #{type}, name = #{name}, description = #{description} where id = #{id}")
-    void update(Book book);
-
-    @Delete("delete from tbl_book where id = #{id}")
-    void delete(Integer id);
-
-    @Select("select * from tbl_book where id = #{id}")
-    Book getById(Integer id);
-
-    @Select("select * from tbl_book")
-    List<Book> getAll();
-}
-```
-
-Service：
-
-```java
-@Transactional
-public interface BookService {
-    boolean save(Book book);
-    boolean update(Book book);
-    boolean delete(Integer id);
-    Book getById(Integer id);
-    List<Book> getAll();
-}
-```
-
-```java
-@Service
-public class BookServiceImpl implements BookService {
-    @Autowired
-    private BookDao bookDao;
-
-    public boolean save(Book book) {
-        bookDao.save(book);
-        return true;
+public class ServletConfig extends AbstractAnnotationConfigDispatcherServletInitializer {
+    protected Class<?>[] getRootConfigClasses() {
+        return new Class[]{SpringConfig.class};
     }
 
-    public boolean update(Book book) {
-        bookDao.update(book);
-        return true;
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class[]{SpringMvcConfig.class};
     }
 
-    public boolean delete(Integer id) {
-        bookDao.delete(id);
-        return true;
+    protected String[] getServletMappings() {
+        return new String[]{"/"};
     }
 
-    public Book getById(Integer id) {
-        return bookDao.getById(id);
-    }
-
-    public List<Book> getAll() {
-        return bookDao.getAll();
+    @Override
+    protected Filter[] getServletFilters() {
+        CharacterEncodingFilter filter = new CharacterEncodingFilter();
+        filter.setEncoding("utf-8");
+        return new Filter[]{filter};
     }
 }
 ```
 
-Controller：
+> **易错点：**`javax.servlet-api` 必须设置 `provided`，运行时使用 Tomcat 自带 Servlet API，否则容易与容器里的包冲突。
 
-```java
-@RestController
-@RequestMapping("/books")
-public class BookController {
-    @Autowired
-    private BookService bookService;
+#### 7. 统一结果封装：前后端协议要稳定
 
-    @PostMapping
-    public boolean save(@RequestBody Book book) {
-        return bookService.save(book);
-    }
-
-    @PutMapping
-    public boolean update(@RequestBody Book book) {
-        return bookService.update(book);
-    }
-
-    @DeleteMapping("/{id}")
-    public boolean delete(@PathVariable Integer id) {
-        return bookService.delete(id);
-    }
-
-    @GetMapping("/{id}")
-    public Book getById(@PathVariable Integer id) {
-        return bookService.getById(id);
-    }
-
-    @GetMapping
-    public List<Book> getAll() {
-        return bookService.getAll();
-    }
-}
-```
-
-业务层单元测试：
-
-```java
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(classes = SpringConfig.class)
-public class BookServiceTest {
-    @Autowired
-    private BookService bookService;
-
-    @Test
-    public void testGetById() {
-        System.out.println(bookService.getById(1));
-    }
-
-    @Test
-    public void testGetAll() {
-        System.out.println(bookService.getAll());
-    }
-}
-```
-
-> **易错：**IDEA 可能提示 `BookDao` 无法注入，因为它看不到接口实现类。但 MyBatis-Spring 会在运行时创建 Mapper 代理对象并交给 Spring 管理。只要 `MapperScannerConfigurer` 包路径正确，运行时可以正常注入。
-
-### 15. 统一结果封装：前后端约定一种响应格式
-
-如果 Controller 有时返回 `boolean`，有时返回对象，有时返回集合，前端处理会越来越乱。统一结果封装的目的就是让所有接口都返回同一种外壳：
-
-```json
-{
-  "code": 20041,
-  "data": {},
-  "msg": "查询成功"
-}
-```
-
-结果模型：
+Controller 如果有的返回 `boolean`，有的返回对象，有的返回集合，前端解析会很乱。统一协议通常包含三部分：
 
 ```java
 public class Result {
     private Object data;
     private Integer code;
     private String msg;
-
-    public Result() {
-    }
 
     public Result(Integer code, Object data) {
         this.code = code;
@@ -1680,12 +914,10 @@ public class Result {
         this.data = data;
         this.msg = msg;
     }
-
-    // getter/setter
 }
 ```
 
-状态码：
+操作码集中定义：
 
 ```java
 public class Code {
@@ -1700,12 +932,11 @@ public class Code {
     public static final Integer GET_ERR = 20040;
 
     public static final Integer SYSTEM_ERR = 50001;
-    public static final Integer SYSTEM_TIMEOUT_ERR = 50002;
     public static final Integer BUSINESS_ERR = 60002;
 }
 ```
 
-Controller 改造：
+Controller 返回统一结果：
 
 ```java
 @RestController
@@ -1720,18 +951,6 @@ public class BookController {
         return new Result(flag ? Code.SAVE_OK : Code.SAVE_ERR, flag);
     }
 
-    @PutMapping
-    public Result update(@RequestBody Book book) {
-        boolean flag = bookService.update(book);
-        return new Result(flag ? Code.UPDATE_OK : Code.UPDATE_ERR, flag);
-    }
-
-    @DeleteMapping("/{id}")
-    public Result delete(@PathVariable Integer id) {
-        boolean flag = bookService.delete(id);
-        return new Result(flag ? Code.DELETE_OK : Code.DELETE_ERR, flag);
-    }
-
     @GetMapping("/{id}")
     public Result getById(@PathVariable Integer id) {
         Book book = bookService.getById(id);
@@ -1739,86 +958,12 @@ public class BookController {
         String msg = book != null ? "" : "数据查询失败，请重试";
         return new Result(code, book, msg);
     }
-
-    @GetMapping
-    public Result getAll() {
-        List<Book> books = bookService.getAll();
-        Integer code = books != null ? Code.GET_OK : Code.GET_ERR;
-        String msg = books != null ? "" : "数据查询失败，请重试";
-        return new Result(code, books, msg);
-    }
 }
 ```
 
-> **重难点：**统一结果封装不是为了“多包一层”好看，而是为了固定前后端协议。前端永远先看 `code` 判断结果，再从 `data` 取业务数据，异常信息从 `msg` 展示。
+#### 8. 统一异常处理：异常不要散落在 Controller
 
-### 16. 统一异常处理：让异常也走统一协议
-
-如果 Controller 或 Service 抛异常，默认可能返回 Tomcat/SpringMVC 的错误页面或杂乱错误信息。前后端分离项目需要把异常也转成统一 JSON。
-
-统一异常处理器：
-
-```java
-@RestControllerAdvice
-public class ProjectExceptionAdvice {
-    @ExceptionHandler(Exception.class)
-    public Result doException(Exception ex) {
-        System.out.println("异常被统一处理：" + ex.getMessage());
-        return new Result(Code.SYSTEM_ERR, null, "系统繁忙，请稍后再试");
-    }
-}
-```
-
-`@RestControllerAdvice` 可以理解为“给所有 REST Controller 做增强”，`@ExceptionHandler` 指定当前方法处理哪类异常。
-
-更工程化的做法是先区分异常类型：
-
-| 异常类型 | 含义 | 处理思路 |
-| --- | --- | --- |
-| 系统异常 | 数据库、服务器、网络、第三方服务等不可控问题 | 记录日志，给用户统一友好提示 |
-| 业务异常 | 用户操作或业务规则不满足 | 给用户明确可理解提示 |
-| 其他异常 | 未预期问题 | 记录日志，给通用提示 |
-
-自定义系统异常：
-
-```java
-public class SystemException extends RuntimeException {
-    private Integer code;
-
-    public SystemException(Integer code, String message) {
-        super(message);
-        this.code = code;
-    }
-
-    public SystemException(Integer code, String message, Throwable cause) {
-        super(message, cause);
-        this.code = code;
-    }
-
-    public Integer getCode() {
-        return code;
-    }
-}
-```
-
-自定义业务异常：
-
-```java
-public class BusinessException extends RuntimeException {
-    private Integer code;
-
-    public BusinessException(Integer code, String message) {
-        super(message);
-        this.code = code;
-    }
-
-    public Integer getCode() {
-        return code;
-    }
-}
-```
-
-异常处理器分类处理：
+全局异常处理器：
 
 ```java
 @RestControllerAdvice
@@ -1840,102 +985,36 @@ public class ProjectExceptionAdvice {
 }
 ```
 
-业务代码中抛出：
+自定义异常：
 
 ```java
-public Book getById(Integer id) {
-    if (id == 1) {
-        throw new BusinessException(Code.BUSINESS_ERR, "请不要使用你的技术挑战我的耐性");
+public class BusinessException extends RuntimeException {
+    private Integer code;
+
+    public BusinessException(Integer code, String message) {
+        super(message);
+        this.code = code;
     }
 
-    try {
-        int i = 1 / 0;
-    } catch (Exception e) {
-        throw new SystemException(Code.SYSTEM_TIMEOUT_ERR, "服务器访问超时，请重试", e);
+    public Integer getCode() {
+        return code;
     }
-
-    return bookDao.getById(id);
 }
 ```
 
-> **易错：**`@RestControllerAdvice` 也要被 SpringMVC 扫描到。它处理的是表现层异常响应，所以配置类应在 SpringMVC 的扫描范围内。
+> **重难点：**异常处理器不是为了“吞掉异常”，而是把异常转换成前端能理解的统一协议。系统异常、业务异常和未知异常要分层处理。
 
-### 17. 前后台协议联调：页面只认接口协议
+#### 9. 拦截器：Controller 方法前后的增强
 
-前端页面通过 Axios 调接口时，不应该依赖后端返回的原始对象，而应该依赖统一协议：
-
-```javascript
-axios.get("/books").then((res) => {
-    this.dataList = res.data.data;
-});
-```
-
-新增后根据 `code` 判断操作结果：
-
-```javascript
-axios.post("/books", this.formData).then((res) => {
-    if (res.data.code == 20011) {
-        this.dialogFormVisible = false;
-        this.$message.success("添加成功");
-    } else if (res.data.code == 20010) {
-        this.$message.error("添加失败");
-    } else {
-        this.$message.error(res.data.msg);
-    }
-}).finally(() => {
-    this.getAll();
-});
-```
-
-修改前先根据 ID 查询回显：
-
-```javascript
-axios.get("/books/" + row.id).then((res) => {
-    if (res.data.code == 20041) {
-        this.formData = res.data.data;
-        this.dialogFormVisible4Edit = true;
-    } else {
-        this.$message.error(res.data.msg);
-    }
-});
-```
-
-删除前确认，删除后刷新：
-
-```javascript
-this.$confirm("此操作永久删除当前数据，是否继续？", "提示", {
-    type: "info"
-}).then(() => {
-    axios.delete("/books/" + row.id).then((res) => {
-        if (res.data.code == 20021) {
-            this.$message.success("删除成功");
-        } else {
-            this.$message.error("删除失败");
-        }
-    }).finally(() => {
-        this.getAll();
-    });
-}).catch(() => {
-    this.$message.info("取消删除操作");
-});
-```
-
-> **易忘：**页面调接口时关注的是“协议”，不是后端方法名。只要 REST 路径、HTTP 方法、请求体格式、响应 `code/data/msg` 稳定，前后端就能独立开发。
-
-### 18. 拦截器：Controller 方法前后的统一增强
-
-拦截器 `Interceptor` 是 SpringMVC 提供的动态拦截机制，用于在 Controller 方法执行前后插入逻辑，例如登录校验、权限判断、请求日志、接口耗时统计。
-
-过滤器和拦截器的区别：
+拦截器属于 SpringMVC，只拦截进入 SpringMVC 的请求；过滤器属于 Servlet，可以拦截更广泛的资源访问。
 
 | 对比项 | Filter | Interceptor |
 | --- | --- | --- |
-| 所属技术 | Servlet 规范 | SpringMVC |
-| 拦截范围 | 几乎所有 Web 访问 | SpringMVC 管理的 Controller 请求 |
-| 配置位置 | Web 容器 | SpringMVC 配置 |
-| 常见用途 | 编码、跨域、底层请求处理 | 登录、权限、业务级请求增强 |
+| 所属技术 | Servlet | SpringMVC |
+| 拦截范围 | 几乎所有请求 | SpringMVC 控制器请求 |
+| 典型用途 | 编码、跨域、安全过滤 | 登录校验、权限、Controller 前后增强 |
 
-拦截器类：
+拦截器实现：
 
 ```java
 @Component
@@ -1966,11 +1045,11 @@ public class ProjectInterceptor implements HandlerInterceptor {
 }
 ```
 
-配置拦截器，推荐实现 `WebMvcConfigurer`：
+注册拦截器：
 
 ```java
 @Configuration
-@ComponentScan("com.itheima.controller")
+@ComponentScan({"com.itheima.controller"})
 @EnableWebMvc
 public class SpringMvcConfig implements WebMvcConfigurer {
     @Autowired
@@ -1984,88 +1063,49 @@ public class SpringMvcConfig implements WebMvcConfigurer {
 }
 ```
 
-> **易错：**`/books` 只能匹配 `/books`，不能匹配 `/books/100`。要拦截单层子路径，需要再加 `/books/*`；多层路径可用 `/books/**`。
+> **易错点：**`preHandle` 返回 `true` 才放行，返回 `false` 会拦截后续 Controller 方法。多个拦截器时，`preHandle` 按注册顺序执行，`postHandle` 和 `afterCompletion` 通常按反向顺序执行。
 
-三个方法的职责：
+### 三、Maven 高级：从“能跑”到“可维护、可构建、可共享”
 
-| 方法 | 执行时机 | 常用程度 | 记忆点 |
-| --- | --- | --- | --- |
-| `preHandle` | Controller 方法执行前 | 最高 | 返回 `true` 放行，返回 `false` 拦截 |
-| `postHandle` | Controller 方法执行后、响应完成前 | 较低 | REST JSON 项目中较少改 `ModelAndView` |
-| `afterCompletion` | 整个请求完成后 | 中等 | 适合清理资源、记录最终日志 |
+#### Maven 记忆导图（Mermaid）
 
-获取请求头和目标方法：
+```mermaid
+flowchart TB
+    V["Maven高级：工程治理"]:::root
+    V --> Split["分模块：把公共代码抽成jar"]:::node
+    Split --> Install["install到本地仓库，其他模块才能依赖"]:::node
+    V --> Dep["依赖管理"]:::node
+    Dep --> Trans["依赖传递：A依赖B，B依赖C，A可用C"]:::node
+    Dep --> Conflict["冲突选择：特殊优先、路径优先、声明优先"]:::warn
+    Dep --> Optional["optional：B对外隐藏C"]:::node
+    Dep --> Exclusion["exclusions：A主动排除C"]:::node
+    V --> Multi["聚合与继承"]:::node
+    Multi --> Aggregation["聚合：一次构建多个模块"]:::node
+    Multi --> Inheritance["继承：统一依赖、插件、属性版本"]:::node
+    V --> Profile["属性与多环境：${key} + profiles + -P"]:::node
+    V --> Test["跳过测试：IDEA、插件、-DskipTests"]:::node
+    V --> Nexus["私服：hosted/proxy/group，deploy上传"]:::node
 
-```java
-public boolean preHandle(HttpServletRequest request,
-                         HttpServletResponse response,
-                         Object handler) throws Exception {
-    String contentType = request.getHeader("Content-Type");
-    HandlerMethod hm = (HandlerMethod) handler;
-    String methodName = hm.getMethod().getName();
-    System.out.println(contentType + " -> " + methodName);
-    return true;
-}
+    classDef root fill:#EF6C00,stroke:#E65100,color:#fff,stroke-width:2px;
+    classDef node fill:#FFF3E0,stroke:#FFB74D,color:#E65100;
+    classDef warn fill:#FFF8E1,stroke:#F9A825,color:#5D4037;
 ```
 
-拦截器链按“先进后出”理解：
+Maven 高级的核心不是“会写坐标”，而是把项目从单体练习推进到团队协作：**模块可拆、依赖可控、构建可批量、配置可切换、产物可共享。**
 
-```java
-@Override
-public void addInterceptors(InterceptorRegistry registry) {
-    registry.addInterceptor(projectInterceptor).addPathPatterns("/books", "/books/*");
-    registry.addInterceptor(projectInterceptor2).addPathPatterns("/books", "/books/*");
-}
-```
+#### 1. 分模块开发：把公共能力抽出来
 
-当两个拦截器都放行时：
+分模块有两种常见动机：
 
-```text
-preHandle 1
-preHandle 2
-Controller 方法
-postHandle 2
-postHandle 1
-afterCompletion 2
-afterCompletion 1
-```
+1. 按功能拆：订单、商品、用户等业务模块分离，避免一个功能异常影响整个系统。
+2. 按层拆：`domain`、`dao`、`service`、`web` 等公共层单独成模块，避免重复代码。
 
-如果第二个拦截器的 `preHandle` 返回 `false`：
+抽取 `domain` 模块的关键步骤：
 
-```text
-preHandle 1
-preHandle 2
-afterCompletion 1
-```
-
-> **重难点：**`preHandle` 按配置顺序执行；`postHandle` 和 `afterCompletion` 按反向顺序执行。某个拦截器拦截后，后续 Controller 和后续拦截器不再执行，但已经放行过的前置拦截器可能会执行 `afterCompletion`。
-
-#### SpringMVC 尾部复盘导图（Mermaid）
-
-![springmvc-e.svg](../../../public/blog/SSM/springmvc-e.svg)
-
-### 19. Maven 高级：多模块工程的依赖、构建与发布治理
-
-#### 首部记忆导图（Mermaid）
-![maven-s.svg](../../../public/blog/SSM/maven-s.svg)
-
-
-#### 核心正文笔记
-
-Maven 高级的主线不是多背几个标签，而是解决一个项目变大后的真实问题：**代码拆成多个模块后，如何让模块之间能复用、能统一构建、能统一管版本、能按环境打包，并把团队内部产物共享出去。**所以复习时按“拆 -> 依赖 -> 统一管理 -> 环境切换 -> 私服发布”这条链记，最不容易断。
-
-##### 19.1 分模块开发：先拆边界，再建立依赖
-
-单模块 SSM 项目能跑，但随着业务变多，所有代码挤在一个工程里会带来两个问题：一个功能坏了可能影响整个工程启动；多个业务模块需要相同的 `domain`、`dao`、工具类时，复制代码会让维护成本迅速上升。分模块开发就是把公共能力抽成独立 Maven 模块，再像引用第三方 jar 一样引用自己的模块。
-
-常见拆法有两类：
-
-| 拆分方式 | 例子 | 解决的问题 |
-| --- | --- | --- |
-| 按功能拆 | 订单、商品、用户、支付 | 功能边界清楚，便于多人协作 |
-| 按层拆 | `pojo/domain`、`dao`、`service`、`web` | 公共层可复用，减少重复代码 |
-
-以课程中的 SSM 拆分为例，先抽出 `maven_03_pojo`，把 `Book` 放到 `com.itheima.domain`；再抽出 `maven_04_dao`，把 `BookDao` 放到 `com.itheima.dao`。原来的 Web/SSM 模块删除对应代码后，需要在 `pom.xml` 中依赖新模块：
+1. 创建 `maven_03_pojo` 这类 `jar` 模块。
+2. 把 `Book` 等实体类移到新模块。
+3. 原项目删除重复实体类。
+4. 原项目引入新模块依赖。
 
 ```xml
 <dependency>
@@ -2075,57 +1115,29 @@ Maven 高级的主线不是多背几个标签，而是解决一个项目变大�
 </dependency>
 ```
 
-Dao 模块依赖 Pojo 模块，同时还要补上自己编译需要的 MyBatis、MySQL 等依赖：
+如果编译报找不到 `maven_03_pojo`，原因是 Maven 会先去本地仓库找 jar，但这个模块还没有安装。需要对被依赖模块执行：
 
-```xml
-<dependencies>
-    <dependency>
-        <groupId>com.itheima</groupId>
-        <artifactId>maven_03_pojo</artifactId>
-        <version>1.0-SNAPSHOT</version>
-    </dependency>
-
-    <dependency>
-        <groupId>org.mybatis</groupId>
-        <artifactId>mybatis</artifactId>
-        <version>3.5.6</version>
-    </dependency>
-</dependencies>
+```shell
+mvn install
 ```
 
-> **易忘：**IDEA 里能看到模块，不代表 Maven 仓库里已经有这个模块。其他模块编译时找不到 `maven_03_pojo` 或 `maven_04_dao`，通常是因为被依赖模块还没有执行 `install` 安装到本地仓库。团队协作时则应发布到私服。
+> **易错点：**IDEA 中能看到相邻模块，不代表 Maven 构建时一定能找到。Maven 的依赖解析以仓库和 Reactor 构建为准，被依赖模块没有参与聚合构建或没有安装到本地仓库，就可能找不到。
 
-分模块的操作口诀是：**创建模块 -> 移动代码 -> 删除原代码 -> 添加依赖 -> 被依赖模块先 install -> 主模块再 compile/test/package。**
+#### 2. 依赖传递与冲突：理解 Maven 如何选版本
 
-##### 19.2 依赖传递与冲突：看懂 Maven 最终选了谁
+依赖具有传递性：A 依赖 B，B 依赖 C，那么 A 通常也能使用 C。依赖传递带来便利，也会带来版本冲突。
 
-依赖是当前项目运行或编译所需的 jar。最基本的写法是：
+Maven 冲突选择可以这样记：
 
-```xml
-<dependencies>
-    <dependency>
-        <groupId>org.springframework</groupId>
-        <artifactId>spring-webmvc</artifactId>
-        <version>5.2.10.RELEASE</version>
-    </dependency>
-</dependencies>
-```
-
-Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么 `A` 通常也能间接使用 `C`。在 `maven_02_ssm -> maven_04_dao -> maven_03_pojo` 这个例子里，即使 Web 模块不直接声明 Pojo，只要 Dao 传递了 Pojo，Web 模块也可能拿到 `Book`。
-
-依赖传递带来的核心风险是**同一个 jar 出现多个版本**。Maven 会做冲突调解，常见规则如下：
-
-| 规则 | 触发场景 | 记忆方式 |
+| 规则 | 含义 | 记忆 |
 | --- | --- | --- |
-| 特殊优先 | 同一个 POM 中声明同一资源的不同版本 | 后声明覆盖先声明 |
-| 路径优先 | 不同传递路径深度不同 | 离当前项目越近越优先 |
-| 声明优先 | 传递路径深度相同 | 谁先声明，谁优先 |
+| 特殊优先 | 同一个 pom 中同级配置相同资源不同版本，后配置覆盖先配置 | “近在本文件，后者赢” |
+| 路径优先 | 依赖路径越短，优先级越高 | “离我近的赢” |
+| 声明优先 | 路径长度相同，先声明的优先 | “同距离先到先得” |
 
-> **重难点：**不要只凭脑子猜最终版本。IDEA 的 Maven `Dependencies` 面板或依赖图展示的版本，才是 Maven 最终选择的版本。
+> **重难点：**规则不必死背到焦虑。真实排查时看 Maven Dependencies 视图或执行 `mvn dependency:tree`，以最终解析结果为准。
 
-如果不想让传递依赖继续向外暴露，有两种方式。
-
-**可选依赖**写在被依赖方，也就是 `B` 不想把自己的 `C` 传给别人：
+可选依赖是“提供方隐藏”：
 
 ```xml
 <dependency>
@@ -2136,7 +1148,7 @@ Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么
 </dependency>
 ```
 
-**排除依赖**写在使用方，也就是 `A` 明知道 `B` 会传来 `C`，但主动切断它：
+排除依赖是“使用方主动断开”：
 
 ```xml
 <dependency>
@@ -2152,35 +1164,23 @@ Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么
 </dependency>
 ```
 
-> **易错：**`optional` 是“我不向外传”，配置在被依赖模块；`exclusions` 是“我不要你传来的某个包”，配置在当前模块。`exclusion` 里不写版本，因为排除的是依赖关系，不是选择另一个版本。
+> **易忘点：**`optional` 写在 B 上，表示 B 不想把 C 传给别人；`exclusions` 写在 A 上，表示 A 知道 B 会传来 C，但我主动不要。
 
-##### 19.3 聚合与继承：一个管构建，一个管配置
+#### 3. 聚合与继承：一个管构建，一个管配置
 
-多模块项目最怕两件事：构建时漏掉模块，维护依赖时版本到处散落。Maven 用**聚合**解决批量构建，用**继承**解决重复配置和版本统一。
-
-聚合工程通常是没有业务代码的空工程，打包方式必须是 `pom`，通过 `<modules>` 管理多个模块：
+聚合用于一次构建多个模块。聚合工程通常只有 `pom.xml`，打包方式为 `pom`：
 
 ```xml
-<project>
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.itheima</groupId>
-    <artifactId>maven_01_parent</artifactId>
-    <version>1.0-RELEASE</version>
-    <packaging>pom</packaging>
+<packaging>pom</packaging>
 
-    <modules>
-        <module>../maven_02_ssm</module>
-        <module>../maven_03_pojo</module>
-        <module>../maven_04_dao</module>
-    </modules>
-</project>
+<modules>
+    <module>../maven_03_pojo</module>
+    <module>../maven_04_dao</module>
+    <module>../maven_02_ssm</module>
+</modules>
 ```
 
-对聚合工程执行 `compile`、`install` 等命令时，Maven 会把被聚合模块一起构建，并且会根据模块依赖关系安排顺序。
-
-> **易忘：**`<modules>` 的书写顺序不等于最终构建顺序。Maven 会按模块之间的依赖关系自动调整。
-
-继承关系写在子工程中，子工程通过 `<parent>` 继承父 POM 的配置：
+继承用于统一配置。父工程也通常是 `pom` 打包，子工程声明父工程：
 
 ```xml
 <parent>
@@ -2191,55 +1191,50 @@ Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么
 </parent>
 ```
 
-父工程中直接写在 `<dependencies>` 里的依赖会被子工程继承，适合所有子模块都确实需要的公共依赖。但如果某些依赖只是“部分模块需要”，就不要直接塞给所有子模块，应使用 `<dependencyManagement>` 统一管理版本：
+父工程可用 `dependencyManagement` 统一版本，但不会直接导入依赖：
 
 ```xml
 <dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>5.2.10.RELEASE</version>
         </dependency>
     </dependencies>
 </dependencyManagement>
 ```
 
-子模块真正需要时再声明坐标，版本由父工程提供：
+子工程只写 G 和 A：
 
 ```xml
 <dependency>
-    <groupId>junit</groupId>
-    <artifactId>junit</artifactId>
-    <scope>test</scope>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-webmvc</artifactId>
 </dependency>
 ```
 
-> **重难点：**`dependencyManagement` **不真正引入 jar**，只提供版本管理。子工程不声明 `<dependency>`，依赖就不会出现。
-
-聚合和继承的区别可以这样记：
-
-| 对比项 | 聚合 | 继承 |
+| 对比 | 聚合 | 继承 |
 | --- | --- | --- |
-| 目的 | 批量构建多个模块 | 复用父 POM 配置、统一版本 |
-| 配置位置 | 父/聚合工程写 `<modules>` | 子工程写 `<parent>` |
-| 父工程是否知道子工程 | 知道，因为列了模块 | 不一定知道，子工程主动继承 |
-| 相同点 | 打包方式都常为 `pom`，都可以没有业务代码 | 实战中常合并在同一个父工程 |
+| 目的 | 批量构建 | 统一配置 |
+| 标签 | `<modules>` | `<parent>` |
+| 方向 | 父知道子 | 子知道父 |
+| 常见打包 | `pom` | `pom` |
 
-##### 19.4 属性、资源过滤与版本语义：把会变的东西抽出来
+> **重难点：**聚合和继承可以放在同一个父工程中，但它们解决的问题不同。聚合解决“一次构建多个模块”，继承解决“多个模块共用配置”。
 
-即使有了 `dependencyManagement`，如果 Spring 相关 jar 都写 `5.2.10.RELEASE`，升级时仍然可能漏改。属性就是 POM 里的变量，把版本号集中到 `<properties>`：
+#### 4. 属性、资源过滤与版本管理
+
+父工程中定义属性：
 
 ```xml
 <properties>
     <spring.version>5.2.10.RELEASE</spring.version>
-    <junit.version>4.12</junit.version>
-    <mybatis-spring.version>1.3.0</mybatis-spring.version>
+    <jdbc.url>jdbc:mysql://127.0.0.1:3306/ssm_db</jdbc.url>
 </properties>
 ```
 
-依赖中通过 `${属性名}` 引用：
+依赖版本引用属性：
 
 ```xml
 <dependency>
@@ -2249,16 +1244,7 @@ Maven 依赖具有传递性：如果 `A` 依赖 `B`，`B` 又依赖 `C`，那么
 </dependency>
 ```
 
-Maven 属性也可以进入资源文件。例如让 `jdbc.properties` 使用 Maven 中的 `jdbc.url`：
-
-```properties
-jdbc.driver=com.mysql.jdbc.Driver
-jdbc.url=${jdbc.url}
-jdbc.username=root
-jdbc.password=root
-```
-
-但资源文件中的 `${}` 默认不会被 Maven 替换，必须开启资源过滤：
+资源文件也可以用 Maven 属性，但需要开启资源过滤：
 
 ```xml
 <build>
@@ -2271,37 +1257,28 @@ jdbc.password=root
 </build>
 ```
 
-> **易错：**`${project.basedir}` 是当前项目所在目录。把这段配置放到父工程后，子工程继承时会按各自子工程目录解析，比在父工程里手写 `../maven_02_ssm/src/main/resources` 更通用。
+`jdbc.properties`：
 
-Web 项目打包时如果没有 `web.xml`，可能出现找不到入口配置的错误。常见处理方式有两种：补一个 `WEB-INF/web.xml`，或者让 war 插件忽略该检查：
-
-```xml
-<build>
-    <plugins>
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-war-plugin</artifactId>
-            <version>3.2.3</version>
-            <configuration>
-                <failOnMissingWebXml>false</failOnMissingWebXml>
-            </configuration>
-        </plugin>
-    </plugins>
-</build>
+```properties
+jdbc.driver=com.mysql.jdbc.Driver
+jdbc.url=${jdbc.url}
+jdbc.username=root
+jdbc.password=root
 ```
 
-版本号也要会读：
+> **易错点：**Maven 的 `${}` 在构建阶段替换，Spring 的 `${}` 在运行时由 Spring 读取配置替换。两者长得一样，但发生时机不同。
 
-| 版本类型 | 含义 | 使用场景 |
-| --- | --- | --- |
-| `SNAPSHOT` | 快照版本，会随着开发不断更新 | 团队内部开发中频繁发布 |
-| `RELEASE` | 发布版本，内容稳定，不应随意变动 | 阶段性里程碑或对外发布 |
-| `alpha` / `beta` | 内测 / 公测，稳定性低于正式版 | 认识即可 |
-| 纯数字版 | 常见稳定发布写法 | 第三方依赖常见 |
+版本命名：
 
-##### 19.5 多环境与跳过测试：构建时决定用哪套配置
+| 后缀 | 含义 |
+| --- | --- |
+| `SNAPSHOT` | 快照版本，开发中可不断更新 |
+| `RELEASE` | 发布版本，阶段稳定产物 |
+| `alpha/beta` | 内测/公测，不稳定程度不同 |
 
-开发、测试、生产环境通常不能共用一个数据库地址。Maven 的 `profiles` 可以把不同环境的属性放在 POM 中，构建时选择激活哪一套：
+#### 5. 多环境、跳过测试与私服
+
+Maven profiles 可以定义多环境：
 
 ```xml
 <profiles>
@@ -2314,88 +1291,59 @@ Web 项目打包时如果没有 `web.xml`，可能出现找不到入口配置的
             <activeByDefault>true</activeByDefault>
         </activation>
     </profile>
-
     <profile>
         <id>env_pro</id>
         <properties>
             <jdbc.url>jdbc:mysql://127.2.2.2:3306/ssm_db</jdbc.url>
         </properties>
     </profile>
-
-    <profile>
-        <id>env_test</id>
-        <properties>
-            <jdbc.url>jdbc:mysql://127.3.3.3:3306/ssm_db</jdbc.url>
-        </properties>
-    </profile>
 </profiles>
 ```
 
-命令行切换环境：
+命令行切换：
 
-```bash
-mvn install -P env_test
+```shell
+mvn install -P env_pro
 ```
 
-> **重难点：**`profiles` 只负责提供不同属性值；要让配置文件真的变成不同环境的值，还要配合资源过滤 `<filtering>true</filtering>`。
+跳过测试三种方式：
 
-跳过测试有三种常见方式：IDEA Maven 面板的 `Skip Tests` 按钮、Surefire 插件配置、命令行参数。需要精细排除某些测试类时，用插件更清楚：
+1. IDEA Maven 面板点击 Skip Tests。
+2. 配置 `maven-surefire-plugin`。
+3. 命令行：
 
-```xml
-<build>
-    <plugins>
-        <plugin>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <version>2.12.4</version>
-            <configuration>
-                <skipTests>false</skipTests>
-                <excludes>
-                    <exclude>**/BookServiceTest.java</exclude>
-                </excludes>
-            </configuration>
-        </plugin>
-    </plugins>
-</build>
-```
-
-命令行跳过所有测试：
-
-```bash
+```shell
 mvn install -DskipTests
 ```
 
-> **易忘：**`-DskipTests` 只有在执行的生命周期经过 `test` 时才有意义。比如 `install`、`package` 会经过测试阶段，单独执行 `compile` 不经过 `test`，自然看不出跳过效果。
+> **易忘点：**`-DskipTests` 只有构建生命周期经过 test 阶段时才有意义。单独执行 `compile` 本来就不跑测试。
 
-##### 19.6 私服：把团队内部 jar 放到可共享的位置
+Nexus 私服仓库分类：
 
-本地 `install` 只能让自己电脑用到模块，团队成员之间不能靠拷贝 jar 协作。私服就是公司内部搭建的 Maven 资源服务器，常用实现是 Nexus。它的核心价值是两点：**内部模块共享**和**外部依赖缓存**。
+| 仓库类型 | 作用 |
+| --- | --- |
+| hosted | 存放团队自研构件或中央仓库没有的构件 |
+| proxy | 代理中央仓库等远程仓库 |
+| group | 仓库组，统一下载入口，不直接存资源 |
 
-Nexus 仓库常分三类：
-
-| 仓库类型 | 作用 | 能否保存资源 |
-| --- | --- | --- |
-| hosted 宿主仓库 | 保存公司自研包、中央仓库没有的第三方包 | 能 |
-| proxy 代理仓库 | 代理中央仓库或其他公共仓库 | 间接缓存 |
-| group 仓库组 | 把多个仓库合成一个访问入口 | 不能直接保存资源 |
-
-本地 Maven 访问私服要改 `settings.xml`。上传需要账号密码，`server` 的 `id` 要和项目 POM 中上传仓库的 `id` 对上：
+本地 Maven `settings.xml` 配置认证：
 
 ```xml
 <servers>
     <server>
-        <id>itheima-snapshot</id>
+        <id>itheima-release</id>
         <username>admin</username>
         <password>admin</password>
     </server>
     <server>
-        <id>itheima-release</id>
+        <id>itheima-snapshot</id>
         <username>admin</username>
         <password>admin</password>
     </server>
 </servers>
 ```
 
-下载通常通过镜像指向仓库组：
+配置镜像：
 
 ```xml
 <mirrors>
@@ -2407,7 +1355,7 @@ Nexus 仓库常分三类：
 </mirrors>
 ```
 
-工程发布到私服的位置写在 `distributionManagement`，一般放在父 POM 中让子模块继承：
+工程配置上传地址：
 
 ```xml
 <distributionManagement>
@@ -2422,24 +1370,823 @@ Nexus 仓库常分三类：
 </distributionManagement>
 ```
 
-发布命令：
+发布到私服：
 
-```bash
+```shell
 mvn deploy
 ```
 
-> **易错：**`deploy` 上传到哪个仓库，和版本号语义有关。`1.0-SNAPSHOT` 会走 `snapshotRepository`；发布版会走 `repository`。同时，`distributionManagement` 的仓库 `id` 必须能在 `settings.xml` 的 `<servers>` 中找到对应认证信息。
+### 四、SpringBoot：把传统 SSM 的配置成本降下来
 
-##### Maven 高级复习闭环
+#### SpringBoot 记忆导图（Mermaid）
 
-把这些知识放回一个完整流程里：先把单体 SSM 按边界拆成 Pojo、Dao、Web 等模块；模块之间通过 Maven 坐标依赖，被依赖模块先 `install` 或 `deploy`；依赖传递提高复用，但要用冲突规则、`optional`、`exclusions` 控制风险；项目变多后用聚合统一构建，用继承和 `dependencyManagement` 统一依赖配置；版本号、数据库地址等易变值抽到 `properties`，再用 `profiles` 和资源过滤在构建时切换环境；最后用 Nexus 私服让团队共享内部模块，并缓存外部依赖。
+```mermaid
+flowchart TB
+    B["SpringBoot：简化Spring初始搭建与开发过程"]:::root
+    B --> Pain["传统Spring痛点：坐标多、配置类多、服务器外置"]:::warn
+    Pain --> Starter["starter：一次引入一组依赖"]:::node
+    Pain --> Parent["parent：统一依赖与插件版本"]:::node
+    Pain --> Auto["自动配置：按classpath和配置项装配Bean"]:::node
+    B --> Run["引导类：@SpringBootApplication + SpringApplication.run"]:::node
+    Run --> Jar["打包运行：spring-boot-maven-plugin -> java -jar"]:::node
+    B --> Config["配置体系：properties/yml/yaml"]:::node
+    Config --> Profile["多环境：spring.profiles.active + 命令行覆盖"]:::node
+    Config --> Priority["优先级：外部config高于classpath"]:::warn
+    B --> Integrate["整合：@SpringBootTest、MyBatis、Druid、静态资源static"]:::node
 
-#### 尾部复盘导图（Mermaid）
+    classDef root fill:#7B1FA2,stroke:#4A148C,color:#fff,stroke-width:2px;
+    classDef node fill:#F3E5F5,stroke:#BA68C8,color:#4A148C;
+    classDef warn fill:#FFF8E1,stroke:#F9A825,color:#5D4037;
+```
 
-![maven-e.svg](../../../public/blog/SSM/maven-e.svg)
+SpringBoot 的目标是简化 Spring 应用的初始搭建和开发过程。传统 SSM 要写大量坐标、Web 初始化类、Spring 配置类、SpringMVC 配置类；SpringBoot 用 **起步依赖、自动配置、内置服务器** 把这些固定工作压缩掉。
 
+#### 1. 快速入门：一个 starter，一个引导类，一个 Controller
 
+典型 `pom.xml`：
 
-## 尾部复盘导图（Mermaid）
+```xml
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.5.0</version>
+</parent>
 
-![end.svg](../../../public/blog/SSM/end.svg)
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+    </plugins>
+</build>
+```
+
+引导类：
+
+```java
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+Controller：
+
+```java
+@RestController
+@RequestMapping("/books")
+public class BookController {
+    @GetMapping("/{id}")
+    public String getById(@PathVariable Integer id) {
+        System.out.println("id ==> " + id);
+        return "hello , spring boot!";
+    }
+}
+```
+
+> **易忘点：**SpringBoot 默认打 `jar` 包，内置服务器随应用启动；传统 Web 项目常打 `war` 包交给外部 Tomcat。
+
+打包运行：
+
+```shell
+mvn package
+java -jar springboot_01_quickstart-0.0.1-SNAPSHOT.jar
+```
+
+> **易错点：**如果缺少 `spring-boot-maven-plugin`，打出来的 jar 可能不是可直接运行的 Boot jar。
+
+#### 2. starter、parent 与内置服务器
+
+`starter` 用来减少依赖配置。例如 `spring-boot-starter-web` 内部包含 SpringMVC、JSON、Tomcat 等 Web 开发常用依赖。
+
+`parent` 用来减少版本冲突。`spring-boot-starter-parent` 通过依赖管理锁定大量常见坐标版本，所以开发者通常只写 `groupId` 和 `artifactId`。
+
+> **重难点：**`dependencyManagement` 只是管理版本，不等于导入依赖。需要使用某项技术时，仍要在 `dependencies` 中声明对应 starter 或依赖。
+
+切换 Web 服务器时，先排除 Tomcat，再引入 Jetty：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+    <exclusions>
+        <exclusion>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jetty</artifactId>
+</dependency>
+```
+
+#### 3. 配置文件：application 名字固定，后缀可变
+
+SpringBoot 常用三种配置格式：
+
+```properties
+server.port=80
+```
+
+```yaml
+server:
+  port: 81
+```
+
+```yml
+server:
+  port: 82
+```
+
+> **易错点：**配置文件名必须是 `application`，后缀可以是 `properties`、`yml`、`yaml`。
+
+YAML 基本规则：
+
+1. 大小写敏感。
+2. 属性层级用缩进表示。
+3. 缩进不能用 Tab。
+4. `key: value` 冒号后要有空格。
+
+读取配置三种方式：
+
+```java
+@Value("${enterprise.name}")
+private String name;
+```
+
+```java
+@Autowired
+private Environment environment;
+
+public void print() {
+    System.out.println(environment.getProperty("enterprise.name"));
+}
+```
+
+```java
+@Component
+@ConfigurationProperties(prefix = "enterprise")
+public class Enterprise {
+    private String name;
+    private int age;
+    private String tel;
+    private String[] subject;
+}
+```
+
+给 `@ConfigurationProperties` 加元数据提示：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-configuration-processor</artifactId>
+    <optional>true</optional>
+</dependency>
+```
+
+#### 4. 多环境与配置优先级
+
+YAML 多环境：
+
+```yaml
+spring:
+  profiles:
+    active: dev
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+server:
+  port: 80
+
+---
+spring:
+  config:
+    activate:
+      on-profile: pro
+server:
+  port: 81
+```
+
+properties 多环境：
+
+```properties
+# application.properties
+spring.profiles.active=pro
+```
+
+```properties
+# application-pro.properties
+server.port=82
+```
+
+命令行覆盖：
+
+```shell
+java -jar springboot.jar --server.port=88 --spring.profiles.active=test
+```
+
+配置文件位置优先级从低到高记：
+
+| 级别 | 位置 |
+| --- | --- |
+| 1 | `classpath:application.yml` |
+| 2 | `classpath:config/application.yml` |
+| 3 | `file:application.yml` |
+| 4 | `file:config/application.yml` |
+
+> **重难点：**越靠近部署环境的外部配置优先级越高。这样测试或运维可以不改 jar，只在外部放配置覆盖默认值。
+
+#### 5. SpringBoot 整合 JUnit 与 MyBatis
+
+JUnit 测试：
+
+```java
+@SpringBootTest
+class SpringbootTestApplicationTests {
+    @Autowired
+    private BookService bookService;
+
+    @Test
+    public void save() {
+        bookService.save();
+    }
+}
+```
+
+> **易错点：**测试类所在包应在引导类所在包及其子包内；不满足时需要 `@SpringBootTest(classes = Application.class)` 明确指定引导类。
+
+整合 MyBatis：
+
+```yaml
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ssm_db?serverTimezone=UTC
+    username: root
+    password: root
+```
+
+```java
+@Mapper
+public interface BookDao {
+    @Select("select * from tbl_book where id = #{id}")
+    Book getById(Integer id);
+}
+```
+
+使用 Druid：
+
+```xml
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid</artifactId>
+    <version>1.1.16</version>
+</dependency>
+```
+
+```yaml
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ssm_db?serverTimezone=UTC
+    username: root
+    password: root
+```
+
+SpringBoot 改写传统 SSM 案例时，记住这几处替换：
+
+| 传统 SSM | SpringBoot |
+| --- | --- |
+| `SpringConfig`、`SpringMvcConfig`、Web 初始化类 | 通常删除，交给自动配置 |
+| `webapp` 静态资源 | 放到 `resources/static` |
+| MyBatis Mapper 扫描配置 | `@Mapper` 或 `@MapperScan` |
+| Spring JUnit 配置 | `@SpringBootTest` |
+| 数据源配置类 | `application.yml` |
+
+### 五、MyBatisPlus：在 MyBatis 之上做增强
+
+#### MyBatisPlus 记忆导图（Mermaid）
+
+```mermaid
+flowchart TB
+    P["MyBatisPlus：只增强MyBatis，不替换MyBatis"]:::root
+    P --> Start["入门：Boot + mybatis-plus-boot-starter + BaseMapper"]:::node
+    Start --> CRUD["标准CRUD：insert/deleteById/updateById/selectById/selectList"]:::node
+    CRUD --> Page["分页：Page + MybatisPlusInterceptor + PaginationInnerInterceptor"]:::node
+    CRUD --> Wrapper["DQL条件：QueryWrapper/LambdaQueryWrapper"]:::node
+    Wrapper --> Select["查询投影：select/count/groupBy"]:::node
+    Wrapper --> Condition["条件：eq/lt/gt/between/like/orderBy"]:::node
+    P --> Mapping["映射兼容：@TableName/@TableField/@TableId"]:::node
+    Mapping --> Id["ID策略：AUTO/INPUT/ASSIGN_ID/ASSIGN_UUID"]:::warn
+    P --> DML["DML控制：批量、逻辑删除、乐观锁"]:::node
+    DML --> Logic["@TableLogic：delete变update，查询自动过滤"]:::warn
+    DML --> Version["@Version：where version=oldVersion防并发覆盖"]:::warn
+    P --> Fast["快速开发：代码生成器 + IService/ServiceImpl"]:::node
+
+    classDef root fill:#00796B,stroke:#004D40,color:#fff,stroke-width:2px;
+    classDef node fill:#E0F2F1,stroke:#26A69A,color:#004D40;
+    classDef warn fill:#FFF8E1,stroke:#F9A825,color:#5D4037;
+```
+
+MyBatisPlus 简称 MP，是基于 MyBatis 的增强工具。它的定位是：**只做增强，不做改变；帮你少写单表 CRUD、分页、条件构造、常见 DML 控制代码。**
+
+#### 1. 入门案例：继承 BaseMapper 就有通用 CRUD
+
+核心依赖：
+
+```xml
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>mybatis-plus-boot-starter</artifactId>
+    <version>3.4.1</version>
+</dependency>
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid</artifactId>
+    <version>1.1.16</version>
+</dependency>
+```
+
+配置数据源：
+
+```yaml
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/mybatisplus_db?serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+```
+
+实体类：
+
+```java
+public class User {
+    private Long id;
+    private String name;
+    private String password;
+    private Integer age;
+    private String tel;
+}
+```
+
+Dao 接口：
+
+```java
+@Mapper
+public interface UserDao extends BaseMapper<User> {
+}
+```
+
+测试：
+
+```java
+@SpringBootTest
+class MpDemoApplicationTests {
+    @Autowired
+    private UserDao userDao;
+
+    @Test
+    public void testGetAll() {
+        List<User> userList = userDao.selectList(null);
+        System.out.println(userList);
+    }
+}
+```
+
+> **易错点：**MP 不是 IDEA 内置勾选项，通常要手动加 `mybatis-plus-boot-starter`。同时不要再重复引入一堆 MyBatis 与 MyBatis-Spring 依赖，starter 已经通过依赖传递带入。
+
+#### 2. 标准 CRUD 与 Lombok
+
+常用 CRUD：
+
+| 方法 | 含义 |
+| --- | --- |
+| `insert(T entity)` | 新增 |
+| `deleteById(Serializable id)` | 按 id 删除 |
+| `updateById(T entity)` | 按 id 修改非空字段 |
+| `selectById(Serializable id)` | 按 id 查询 |
+| `selectList(Wrapper<T> wrapper)` | 按条件查询集合，`null` 表示无条件 |
+
+新增：
+
+```java
+@Test
+void testSave() {
+    User user = new User();
+    user.setName("黑马程序员");
+    user.setPassword("itheima");
+    user.setAge(12);
+    user.setTel("4006184000");
+    userDao.insert(user);
+}
+```
+
+修改：
+
+```java
+@Test
+void testUpdate() {
+    User user = new User();
+    user.setId(1L);
+    user.setName("Tom888");
+    user.setPassword("tom888");
+    userDao.updateById(user);
+}
+```
+
+> **易忘点：**`updateById` 只修改实体对象中非空的字段。未设置的字段不会被更新为 `null`。
+
+Lombok 简化实体：
+
+```xml
+<dependency>
+    <groupId>org.projectlombok</groupId>
+    <artifactId>lombok</artifactId>
+</dependency>
+```
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class User {
+    private Long id;
+    private String name;
+    private String password;
+    private Integer age;
+    private String tel;
+}
+```
+
+#### 3. 分页：必须配置 MP 分页拦截器
+
+分页调用：
+
+```java
+@Test
+void testSelectPage() {
+    IPage<User> page = new Page<>(1, 3);
+    userDao.selectPage(page, null);
+
+    System.out.println("当前页码值：" + page.getCurrent());
+    System.out.println("每页显示数：" + page.getSize());
+    System.out.println("一共多少页：" + page.getPages());
+    System.out.println("一共多少条数据：" + page.getTotal());
+    System.out.println("数据：" + page.getRecords());
+}
+```
+
+分页插件：
+
+```java
+@Configuration
+public class MybatisPlusConfig {
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor mpInterceptor = new MybatisPlusInterceptor();
+        mpInterceptor.addInnerInterceptor(new PaginationInnerInterceptor());
+        return mpInterceptor;
+    }
+}
+```
+
+打开 SQL 日志：
+
+```yaml
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+```
+
+> **易错点：**只写 `selectPage` 不配置分页拦截器，分页能力不完整。SQL 日志适合调试，调试完要关闭，避免影响性能和日志体积。
+
+#### 4. DQL 条件构造：Wrapper 是核心
+
+MP 用 `Wrapper` 以编程方式组织查询条件。普通写法：
+
+```java
+@Test
+void testGetByCondition() {
+    QueryWrapper<User> qw = new QueryWrapper<>();
+    qw.lt("age", 18);
+    List<User> userList = userDao.selectList(qw);
+    System.out.println(userList);
+}
+```
+
+Lambda 写法避免字段名写错：
+
+```java
+@Test
+void testLambdaQueryWrapper() {
+    LambdaQueryWrapper<User> lqw = new LambdaQueryWrapper<>();
+    lqw.lt(User::getAge, 18);
+    List<User> userList = userDao.selectList(lqw);
+    System.out.println(userList);
+}
+```
+
+多条件：
+
+```java
+LambdaQueryWrapper<User> lqw = new LambdaQueryWrapper<>();
+lqw.lt(User::getAge, 30).gt(User::getAge, 10);
+```
+
+条件可能为空时，不要拼出无效条件：
+
+```java
+Integer minAge = null;
+Integer maxAge = 30;
+
+LambdaQueryWrapper<User> lqw = new LambdaQueryWrapper<>();
+lqw.gt(minAge != null, User::getAge, minAge);
+lqw.lt(maxAge != null, User::getAge, maxAge);
+```
+
+常用条件：
+
+| 方法 | SQL 含义 |
+| --- | --- |
+| `eq` | `=` |
+| `ne` | `<>` |
+| `lt` / `le` | `<` / `<=` |
+| `gt` / `ge` | `>` / `>=` |
+| `between` | 区间 |
+| `like` | 模糊匹配 |
+| `orderByAsc` / `orderByDesc` | 排序 |
+
+查询投影：
+
+```java
+QueryWrapper<User> qw = new QueryWrapper<>();
+qw.select("id", "name", "age");
+List<User> users = userDao.selectList(qw);
+```
+
+聚合分组：
+
+```java
+QueryWrapper<User> qw = new QueryWrapper<>();
+qw.select("count(*) as count, tel");
+qw.groupBy("tel");
+List<Map<String, Object>> maps = userDao.selectMaps(qw);
+```
+
+> **重难点：**优先使用 `LambdaQueryWrapper`，它能把字段引用绑定到 getter，减少字符串字段名写错导致的运行时问题。
+
+#### 5. 映射兼容：表名、字段名、非表字段、隐藏字段
+
+当实体类和表结构不一致时，用注解显式映射。
+
+```java
+@Data
+@TableName("tbl_user")
+public class User {
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+
+    private String name;
+
+    @TableField(value = "pwd", select = false)
+    private String password;
+
+    private Integer age;
+    private String tel;
+
+    @TableField(exist = false)
+    private Integer online;
+}
+```
+
+| 注解 | 作用 |
+| --- | --- |
+| `@TableName` | 指定数据库表名 |
+| `@TableField(value = "...")` | 指定字段映射 |
+| `@TableField(exist = false)` | 该属性不是数据库字段 |
+| `@TableField(select = false)` | 默认查询不返回该字段 |
+| `@TableId` | 主键字段与策略 |
+
+> **易忘点：**`select = false` 常用于密码等敏感字段。它只影响 MP 默认查询，不代表数据库层面真的禁止访问。
+
+#### 6. ID 生成策略：别让主键策略和数据库冲突
+
+常见 ID 策略：
+
+| 策略 | 含义 | 场景 |
+| --- | --- | --- |
+| `AUTO` | 数据库自增 | MySQL 自增主键 |
+| `INPUT` | 手动输入 | 业务系统生成编号 |
+| `ASSIGN_ID` | 雪花算法生成 Long/Integer/String | 分布式常用 |
+| `ASSIGN_UUID` | UUID 字符串 | 字符串主键 |
+
+```java
+@TableId(type = IdType.AUTO)
+private Long id;
+```
+
+全局配置：
+
+```yaml
+mybatis-plus:
+  global-config:
+    db-config:
+      id-type: auto
+      table-prefix: tbl_
+```
+
+> **易错点：**数据库列是自增时用 `AUTO`；如果实体配置了 `ASSIGN_ID`，插入时 MP 会生成很长的 ID，不会使用数据库自增值。
+
+#### 7. 逻辑删除：删除变更新，查询自动过滤
+
+物理删除是真的执行 `delete`；逻辑删除是保留数据，把状态字段改成删除态。
+
+实体配置：
+
+```java
+@Data
+public class User {
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private String name;
+    private String password;
+    private Integer age;
+    private String tel;
+
+    @TableLogic(value = "0", delval = "1")
+    private Integer deleted;
+}
+```
+
+全局配置：
+
+```yaml
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-not-delete-value: 0
+      logic-delete-value: 1
+```
+
+> **重难点：**MP 逻辑删除的本质是 `UPDATE tbl_user SET deleted=1 WHERE id=? AND deleted=0`。之后普通查询会自动追加 `deleted=0` 条件，已删除数据默认查不出来。
+
+如果确实要查包含已删除的数据，可以自己写 SQL：
+
+```java
+@Mapper
+public interface UserDao extends BaseMapper<User> {
+    @Select("select * from tbl_user")
+    List<User> selectAll();
+}
+```
+
+#### 8. 乐观锁：用 version 防止并发覆盖
+
+乐观锁解决的是“我更新时，这条记录没有被别人改过”。实现思路：
+
+1. 表中增加 `version` 字段，默认值 1。
+2. 查询时带出当前 version。
+3. 更新时 SQL 带 `where version = oldVersion`。
+4. 更新成功后 version 自动加 1。
+5. 如果别人先更新，version 变了，当前更新影响行数为 0。
+
+实体：
+
+```java
+@Data
+public class User {
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private String name;
+    private Integer age;
+
+    @Version
+    private Integer version;
+}
+```
+
+拦截器：
+
+```java
+@Configuration
+public class MpConfig {
+    @Bean
+    public MybatisPlusInterceptor mpInterceptor() {
+        MybatisPlusInterceptor mpInterceptor = new MybatisPlusInterceptor();
+        mpInterceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+        return mpInterceptor;
+    }
+}
+```
+
+正确更新流程：
+
+```java
+@Test
+void testUpdate() {
+    User user = userDao.selectById(3L);
+    user.setName("Jock888");
+    userDao.updateById(user);
+}
+```
+
+模拟并发：
+
+```java
+@Test
+void testUpdateConflict() {
+    User user1 = userDao.selectById(3L);
+    User user2 = userDao.selectById(3L);
+
+    user2.setName("Jock aaa");
+    userDao.updateById(user2);
+
+    user1.setName("Jock bbb");
+    userDao.updateById(user1);
+}
+```
+
+> **易错点：**乐观锁更新前必须先查询出带 version 的对象。只 new 一个对象并设置 id 和 name，如果没有 version，MP 无法构造版本条件。
+
+#### 9. 代码生成器与 Service 快速开发
+
+代码生成器的本质是“模板 + 数据库元数据 + 自定义配置”。它根据表名、字段、策略生成 entity、mapper、service、controller 等代码。
+
+核心生成配置示意：
+
+```java
+public class CodeGenerator {
+    public static void main(String[] args) {
+        AutoGenerator autoGenerator = new AutoGenerator();
+
+        DataSourceConfig dataSource = new DataSourceConfig();
+        dataSource.setDriverName("com.mysql.cj.jdbc.Driver");
+        dataSource.setUrl("jdbc:mysql://localhost:3306/mybatisplus_db?serverTimezone=UTC");
+        dataSource.setUsername("root");
+        dataSource.setPassword("root");
+        autoGenerator.setDataSource(dataSource);
+
+        GlobalConfig globalConfig = new GlobalConfig();
+        globalConfig.setOutputDir(System.getProperty("user.dir") + "/src/main/java");
+        globalConfig.setOpen(false);
+        globalConfig.setAuthor("itheima");
+        globalConfig.setFileOverride(true);
+        globalConfig.setMapperName("%sDao");
+        globalConfig.setIdType(IdType.ASSIGN_ID);
+        autoGenerator.setGlobalConfig(globalConfig);
+
+        PackageConfig packageInfo = new PackageConfig();
+        packageInfo.setParent("com.itheima");
+        packageInfo.setEntity("domain");
+        packageInfo.setMapper("dao");
+        autoGenerator.setPackageInfo(packageInfo);
+
+        StrategyConfig strategyConfig = new StrategyConfig();
+        strategyConfig.setInclude("tbl_user");
+        strategyConfig.setTablePrefix("tbl_");
+        strategyConfig.setRestControllerStyle(true);
+        strategyConfig.setVersionFieldName("version");
+        strategyConfig.setLogicDeleteFieldName("deleted");
+        strategyConfig.setEntityLombokModel(true);
+        autoGenerator.setStrategy(strategyConfig);
+
+        autoGenerator.execute();
+    }
+}
+```
+
+MP 还提供 Service 层通用能力：
+
+```java
+public interface UserService extends IService<User> {
+}
+
+@Service
+public class UserServiceImpl extends ServiceImpl<UserDao, User>
+        implements UserService {
+}
+```
+
+这样 Service 层也天然拥有常见 CRUD 方法，如 `save`、`removeById`、`updateById`、`list`、`getById` 等。
+
+> **复习闭环：**传统 MyBatis 负责 SQL 映射；Spring 管 Mapper 代理和事务；SpringBoot 简化整合配置；MyBatisPlus 在这个基础上继续减少单表 CRUD 和条件构造代码。把这条链记住，SSM 到 Boot 再到 MP 就不容易断层。
