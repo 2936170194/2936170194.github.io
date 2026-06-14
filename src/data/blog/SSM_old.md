@@ -1,4 +1,17 @@
-
+---
+title: SSM
+author: 李杰
+pubDatetime: 2026-06-03T00:00:00Z
+featured: true
+draft: false
+description: SSM、Maven复习笔记
+tags:
+ - 后端
+ - SSM
+ - Spring
+ - SpringMVC
+ - Maven
+---
 
 
 
