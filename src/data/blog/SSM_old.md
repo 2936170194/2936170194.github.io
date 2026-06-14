@@ -2,8 +2,8 @@
 title: SSM
 author: 李杰
 pubDatetime: 2026-06-03T00:00:00Z
-featured: true
-draft: false
+featured: false
+draft: true
 description: SSM、Maven复习笔记
 tags:
  - 后端
